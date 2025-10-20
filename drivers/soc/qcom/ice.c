@@ -5,6 +5,7 @@
  * Copyright (c) 2013-2019, The Linux Foundation. All rights reserved.
  * Copyright (c) 2019, Google LLC
  * Copyright (c) 2023, Linaro Limited
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/bitfield.h>
@@ -316,7 +317,8 @@ static int translate_hwkm_slot(struct qcom_ice *ice, int slot)
 {
 	int offset = 0;
 	u32 hwkm_version = 0;
-
+	if (!ice->use_hwkm)
+		return slot;
 	if (ice->hwkm_init_complete) {
 		hwkm_version = qcom_ice_readl(ice, HWKM_OFFSET(QTI_HWKM_ICE_RG_IPCAT_VERSION));
 		if (hwkm_version >= QCOM_ICE_HWKM_V2_0_0 && hwkm_version < QCOM_ICE_HWKM_V2_1_0)
@@ -358,9 +360,14 @@ static int qcom_ice_program_wrapped_key(struct qcom_ice *ice,
 	memcpy(shm.vaddr, key->raw, key->size);
 	qtee_shmbridge_flush_shm_buf(&shm);
 
-	/* Call trustzone to program the wrapped key using hwkm */
-	err = qcom_scm_config_set_ice_key(hwkm_slot, shm.paddr, key->size,
+	if (!ice->use_hwkm) {
+		err = qcom_scm_config_set_ice_key(hwkm_slot, shm.paddr, key->size,
+			QCOM_SCM_ICE_CIPHER_AES_256_XTS, data_unit_size, 0);
+	} else {
+		/* Call trustzone to program the wrapped key using hwkm */
+		err = qcom_scm_config_set_ice_key(hwkm_slot, shm.paddr, key->size,
 					  0, 0, 0);
+	}
 	if (err) {
 		pr_err("%s:SCM call Error: 0x%x slot %d\n", __func__, err,
 		       slot);
@@ -395,8 +402,6 @@ int qcom_ice_program_key_hwkm(struct qcom_ice *ice,
 	}
 
 	if (bkey->crypto_cfg.key_type == BLK_CRYPTO_KEY_TYPE_HW_WRAPPED) {
-		if (!ice->use_hwkm)
-			return -EINVAL;
 		err = qcom_ice_program_wrapped_key(ice, bkey, data_unit_size,
 						   slot);
 	}
