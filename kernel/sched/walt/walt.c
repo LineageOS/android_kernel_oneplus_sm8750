@@ -2204,23 +2204,10 @@ static void update_lst(struct walt_task_struct *wts, u64 wallclock,
 		/* target time after which task will come out of LST state */
 		wts->lst_tgt_ns = wallclock +
 			(LST_ACTIVATION_TIMEOUT * MSEC_TO_NSEC * lst_delay_factor);
-		wts->continuous_active = 0;
-	} else {
-		if (wts->lst_tgt_ns && (wts->lst_tgt_ns < wallclock)) {
-			wts->lst = false;
-			wts->lst_tgt_ns = 0;
-		}
-
-		wts->continuous_active++;
-
-		/*
-		 * reduce lst_state_counter for active task if task is active, this in-turn
-		 * influences calculation for LST delay.
-		 */
-		if (wts->continuous_active > 10) {
-			wts->lst_state_counter = max_t(s64, wts->lst_state_counter - 10, 0);
-			wts->continuous_active = 0;
-		}
+	} else if (wts->lst_tgt_ns && (wts->lst_tgt_ns < wallclock)) {
+		wts->lst = false;
+		wts->lst_tgt_ns = 0;
+		wts->lst_state_counter = 0;
 	}
 
 	/* tracking the number of windows where a task has encountered an event. */
@@ -2821,7 +2808,6 @@ static inline void __sched_fork_init(struct task_struct *p)
 	wts->lst		= false;
 	wts->lst_tgt_ns		= 0;
 	wts->lst_state_counter	= 0;
-	wts->continuous_active	= 0;
 	wts->pipeline_activity_cnt = 0;
 	atomic_set(&wts->event_windows, 0);
 }
@@ -5161,8 +5147,10 @@ static void android_vh_scheduler_tick(void *unused, struct rq *rq)
 	/* IPC based smart FMAX */
 	cluster = cpu_cluster(cpu);
 	smart_freq_info = cluster->smart_freq_info;
+
 	if (smart_freq_init_done &&
-		smart_freq_info->smart_freq_ipc_participation_mask & IPC_PARTICIPATION) {
+		smart_freq_info->smart_freq_ipc_participation_mask & IPC_PARTICIPATION
+		&& IS_ENABLED(CONFIG_ARM64_AMU_EXTN)) {
 		last_ipc_level = per_cpu(ipc_level, cpu);
 		last_deactivate_ns = per_cpu(ipc_deactivate_ns, cpu);
 		ipc = calculate_ipc(cpu);

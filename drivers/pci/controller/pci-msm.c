@@ -6624,8 +6624,10 @@ int msm_pcie_enumerate(u32 rc_idx)
 	pci_save_state(pcidev);
 	dev->default_state = pci_store_saved_state(pcidev);
 
-	if (dev->boot_option & MSM_PCIE_NO_PROBE_ENUMERATION)
+	if (dev->boot_option & MSM_PCIE_NO_PROBE_ENUMERATION) {
 		dev_pm_syscore_device(&pcidev->dev, true);
+		dev_pm_syscore_device(&dev->pdev->dev, true);
+	}
 out:
 	mutex_unlock(&dev->enumerate_lock);
 
@@ -9260,12 +9262,20 @@ static const struct of_device_id msm_pcie_match[] = {
 	{}
 };
 
+static int msm_pcie_pm_suspend_noirq(struct device *dev);
+static int msm_pcie_pm_resume_noirq(struct device *dev);
+
+static DEFINE_NOIRQ_DEV_PM_OPS(qcom_pcie_pm_ops,
+			msm_pcie_pm_suspend_noirq,
+			msm_pcie_pm_resume_noirq);
+
 static struct platform_driver msm_pcie_driver = {
 	.probe	= msm_pcie_probe,
 	.remove	= msm_pcie_remove,
 	.driver	= {
 		.name		= "pci-msm",
 		.of_match_table	= msm_pcie_match,
+		.pm		= pm_sleep_ptr(&qcom_pcie_pm_ops),
 	},
 };
 
@@ -9871,6 +9881,28 @@ static void msm_pcie_fixup_resume_early(struct pci_dev *dev)
 }
 DECLARE_PCI_FIXUP_RESUME_EARLY(PCIE_VENDOR_ID_QCOM, PCI_ANY_ID,
 				 msm_pcie_fixup_resume_early);
+
+static int msm_pcie_pm_suspend_noirq(struct device *dev)
+{
+	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)
+					dev_get_drvdata(dev);
+
+	if (pcie_dev->enumerated && pcie_dev->power_on)
+		msm_pcie_fixup_suspend(pcie_dev->dev);
+
+	return 0;
+}
+
+static int msm_pcie_pm_resume_noirq(struct device *dev)
+{
+	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)
+					dev_get_drvdata(dev);
+
+	if (pcie_dev->enumerated && !pcie_dev->power_on)
+		msm_pcie_fixup_resume(pcie_dev->dev);
+
+	return 0;
+}
 
 static int msm_pcie_drv_send_rpmsg(struct msm_pcie_dev_t *pcie_dev,
 				   struct msm_pcie_drv_msg *msg)
