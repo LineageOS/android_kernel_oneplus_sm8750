@@ -77,6 +77,14 @@
 #endif /* OPLUS_ARCH_EXTENDS */
 
 #ifdef OPLUS_ARCH_EXTENDS
+/* Optimize headset buttons abnormal problem */
+#define FSA4480_DELAY_TIME 0x21
+#define FSA4480_DIO4483_0X2E 0x2E
+#define FSA4480_DIO4483_0X2F 0x2F
+#define FSA4480_DIO4483_MAX 0x30
+#endif /* OPLUS_ARCH_EXTENDS */
+
+#ifdef OPLUS_ARCH_EXTENDS
 /* Add for log */
 #undef dev_dbg
 #define dev_dbg dev_info
@@ -167,7 +175,12 @@ struct fsa4480_reg_val {
 static const struct regmap_config fsa4480_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
+#ifndef OPLUS_ARCH_EXTENDS
+/* Optimize headset buttons abnormal problem */
 	.max_register = FSA4480_RESET,
+#else /* OPLUS_ARCH_EXTENDS */
+	.max_register = FSA4480_DIO4483_MAX,
+#endif /* OPLUS_ARCH_EXTENDS */
 };
 
 static const struct fsa4480_reg_val fsa_reg_i2c_defaults[] = {
@@ -211,6 +224,58 @@ int fsa4480_get_chip_vendor(struct device_node *node)
 }
 EXPORT_SYMBOL(fsa4480_get_chip_vendor);
 #endif /* OPLUS_ARCH_EXTENDS */
+
+#ifdef OPLUS_ARCH_EXTENDS
+/* Optimize headset buttons abnormal problem */
+static void fsa4480_usbc_update_settings_dio4483(struct fsa4480_priv *fsa_priv,
+		u32 switch_control, u32 switch_enable)
+{
+	u32 prev_control, prev_enable;
+
+	if (!fsa_priv->regmap) {
+		dev_err(fsa_priv->dev, "%s: regmap invalid\n", __func__);
+		return;
+	}
+
+	regmap_read(fsa_priv->regmap, FSA4480_SWITCH_CONTROL, &prev_control);
+	regmap_read(fsa_priv->regmap, FSA4480_SWITCH_SETTINGS, &prev_enable);
+	if (prev_control == switch_control && prev_enable == switch_enable) {
+		dev_dbg(fsa_priv->dev, "%s: settings unchanged\n", __func__);
+		return;
+	}
+
+	regmap_write(fsa_priv->regmap, FSA4480_SWITCH_SETTINGS, 0x80);
+
+#ifdef OPLUS_ARCH_EXTENDS
+/* Add DIO4480 support */
+	if((fsa_priv->vendor == DIO4480) || (fsa_priv->vendor == DIO4483)) {
+		regmap_write(fsa_priv->regmap, FSA4480_RESET, 0x01);//reset DIO4480
+		usleep_range(1000, 1005);
+	}
+#endif /* OPLUS_ARCH_EXTENDS */
+
+	regmap_write(fsa_priv->regmap, FSA4480_DELAY_L_SENSE, 0x00);
+	regmap_write(fsa_priv->regmap, FSA4480_DELAY_L_AGND, 0x00);
+	regmap_write(fsa_priv->regmap, FSA4480_DELAY_L_MIC, 0x0B);
+	regmap_write(fsa_priv->regmap, FSA4480_DELAY_L_R, 0x0F);
+	regmap_write(fsa_priv->regmap, FSA4480_DELAY_TIME, 0x0F);
+	regmap_write(fsa_priv->regmap, DEFAULT_SWITCH_DELAY, 0x08);
+
+	regmap_write(fsa_priv->regmap, FSA4480_DIO4483_0X2E, 0x8F);
+	regmap_write(fsa_priv->regmap, FSA4480_DIO4483_0X2F, 0x45);
+	regmap_write(fsa_priv->regmap, FSA4480_DIO4483_0X2E, 0x72);
+
+	regmap_write(fsa_priv->regmap, FSA4480_SWITCH_CONTROL, switch_control);
+	/* FSA4480 chip hardware requirement */
+	usleep_range(50, 55);
+	regmap_write(fsa_priv->regmap, FSA4480_SWITCH_SETTINGS, switch_enable);
+#ifdef OPLUS_ARCH_EXTENDS
+/* Optimize the pop sound when the headset plug in */
+	usleep_range(DEFAULT_SWITCH_DELAY*100, DEFAULT_SWITCH_DELAY*100+50);
+#endif /* OPLUS_ARCH_EXTENDS */
+}
+#endif /* OPLUS_ARCH_EXTENDS */
+
 
 static void fsa4480_usbc_update_settings(struct fsa4480_priv *fsa_priv,
 		u32 switch_control, u32 switch_enable)
@@ -377,7 +442,16 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 	/* add all modes FSA should notify for in here */
 	case TYPEC_ACCESSORY_AUDIO:
 		/* activate switches */
+#ifdef OPLUS_ARCH_EXTENDS
+/* Optimize headset buttons abnormal problem */
+		if (fsa_priv->vendor == DIO4483) {
+			fsa4480_usbc_update_settings_dio4483(fsa_priv, 0x00, 0x9F);
+		} else {
+			fsa4480_usbc_update_settings(fsa_priv, 0x00, 0x9F);
+		}
+#else /* OPLUS_ARCH_EXTENDS */
 		fsa4480_usbc_update_settings(fsa_priv, 0x00, 0x9F);
+#endif /* OPLUS_ARCH_EXTENDS */
 #ifdef OPLUS_ARCH_EXTENDS
 /* Add DIO4480 support */
 		if((fsa_priv->vendor != DIO4480) && (fsa_priv->vendor != DIO4483)) {
@@ -395,6 +469,11 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 				fsa4480_usbc_update_settings(fsa_priv, 0x00, 0x9F);
 				usleep_range(4000, 4005);
 			}
+		}
+
+		/* Optimize headset buttons abnormal problem */
+		if (fsa_priv->vendor == DIO4483) {
+			usleep_range(10000, 10005);
 		}
 		regmap_read(fsa_priv->regmap, FSA4480_SWITCH_STATUS0, &switch_status);
 		dev_info(dev, "%s: reg[0x%x]=0x%x.\n", __func__, FSA4480_SWITCH_STATUS0, switch_status);
@@ -796,7 +875,16 @@ int fsa4480_switch_event(struct device_node *node,
 			switch_control = 0x0;
 		else
 			switch_control = 0x7;
+#ifdef OPLUS_ARCH_EXTENDS
+/* Optimize headset buttons abnormal problem */
+		if (fsa_priv->vendor == DIO4483) {
+			fsa4480_usbc_update_settings_dio4483(fsa_priv, switch_control, 0x9F);
+		} else {
+			fsa4480_usbc_update_settings(fsa_priv, switch_control, 0x9F);
+		}
+#else /* OPLUS_ARCH_EXTENDS */
 		fsa4480_usbc_update_settings(fsa_priv, switch_control, 0x9F);
+#endif /* OPLUS_ARCH_EXTENDS */
 		break;
 
 #ifdef OPLUS_ARCH_EXTENDS
