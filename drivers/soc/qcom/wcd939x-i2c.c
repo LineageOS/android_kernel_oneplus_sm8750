@@ -562,7 +562,6 @@ static bool wcd_usbss_is_in_reset_state(void)
 	regmap_write(wcd_usbss_ctxt_->regmap, WCD_USBSS_MG1_BIAS, MG_BIAS_CURRENT);
 	regmap_write(wcd_usbss_ctxt_->regmap, WCD_USBSS_MG2_BIAS, MG_BIAS_CURRENT);
 	mutex_unlock(&wcd_usbss_ctxt_->switch_update_lock);
-
 done:
 	/* All checks passed, so a negative surge ESD event has not occurred */
 //#ifdef OPLUS_ARCH_EXTENDS
@@ -2325,6 +2324,12 @@ static int wcd_usbss_probe(struct i2c_client *i2c)
 		priv->surge_enable = true;
 		wcd_usbss_enable_surge_kthread();
 	}
+
+//#ifdef OPLUS_ARCH_EXTENDS
+	/* Fix for WCD9395 USB1.1 camera device detection fail */
+	regmap_write(priv->regmap, WCD_USBSS_DP_BIAS, 0xCF);
+	regmap_write(priv->regmap, WCD_USBSS_DN_BIAS, 0xCF);
+//#endif /* OPLUS_ARCH_EXTENDS */
 
 //#ifdef OPLUS_ARCH_EXTENDS
 /* Checking whether the surge occurs */

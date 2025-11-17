@@ -8901,14 +8901,13 @@ int msm_pcie_allow_l1(struct pci_dev *pci_dev)
 	if (pcie_dev->prevent_l1)
 		goto out;
 
-//	pci_walk_bus(pcie_dev->dev*->bus, msm_pcie_enable_l1, pcie_dev);
 	msm_pcie_config_l1_enable_all(pcie_dev);
 
 	msm_pcie_write_mask(pcie_dev->parf + PCIE20_PARF_PM_CTRL, BIT(5), 0);
 	/* enable L1 */
-//	msm_pcie_write_mask(pcie_dev->dm_core +
-//				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
-//				0, PCI_EXP_LNKCTL_ASPM_L1);
+	msm_pcie_write_mask(pcie_dev->dm_core +
+				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
+				0, PCI_EXP_LNKCTL_ASPM_L1);
 
 	PCIE_DBG2(pcie_dev, "PCIe: RC%d: %02x:%02x.%01x: exit\n",
 		pcie_dev->rc_idx, pci_dev->bus->number,
@@ -9020,11 +9019,6 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 	}
 
 	msm_pcie_config_l1_disable_all(pcie_dev, bus);
-	//pci_walk_bus(pcie_dev->dev->bus, msm_pcie_disable_l1, pcie_dev);
-
-//	msm_pcie_write_mask(pcie_dev->dm_core +
-//				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
-//				PCI_EXP_LNKCTL_ASPM_L1, 0);
 	PCIE_DBG2(pcie_dev, "PCIe: RC%d: %02x:%02x.%01x: exit\n",
 		pcie_dev->rc_idx, pci_dev->bus->number,
 		PCI_SLOT(pci_dev->devfn), PCI_FUNC(pci_dev->devfn));
