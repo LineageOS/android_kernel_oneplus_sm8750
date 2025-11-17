@@ -5,7 +5,7 @@
 #define AW210XX_I2C_NAME "aw210xx_led"
 
 
-#define LEDMODE_MAX_NUM						(11)
+#define LEDMODE_MAX_NUM						(13)
 #define LED_MAX_NUM							(8)
 #define AW_DEBUG 							(1)
 
@@ -336,6 +336,8 @@ enum AW2023_LED_MODE{
 	AW210XX_LED_BREATHMODE,
 	AW210XX_LED_INDIVIDUAL_CTL_BREATH,
 	AW210XX_LED_NONE,
+	AW210XX_LED_FLOW_CTL_MODE,
+	AW210XX_LED_RAINBOW_CTL_MODE,
 	AW210XX_LED_MAXMODE,
 };
 
@@ -401,7 +403,9 @@ struct aw210xx {
 	struct delayed_work   breath_work;
 	bool esd_flag;
 	struct delayed_work   aw210_led_work;
+	struct delayed_work   flow_led_work;
 	struct workqueue_struct *aw210_led_wq;
+	struct workqueue_struct *aw210_led_flow;
 	unsigned int boot_mode;
 };
 
@@ -419,6 +423,8 @@ typedef enum {
 	CHARGE_STAGE2_EFFECT,
 	NEWALWAYSON_EFFECT,
 	MUSIC_EFFECT,
+	FLOW_EFFECT,
+	RAINBOW_EFFECT,
 	MAX_EFFECT,
 } effect_select_t;
 
@@ -429,15 +435,15 @@ static unsigned char aw210xx_col_data[MAX_EFFECT][LED_NUM] = {0};
 static unsigned char dim_data[MAX_EFFECT][LED_NUM];
 static unsigned char fade_data[MAX_EFFECT][LED_NUM];
 static unsigned char effect_stop_val[MAX_EFFECT];
-static AW_COLORFUL_INTERFACE_STRUCT aw210xx_interface[MAX_EFFECT];//aw_lamp_interface.h中定义该结构体
+static AW_COLORFUL_INTERFACE_STRUCT aw210xx_interface[MAX_EFFECT];//aw_lamp_interface.h
 
 #define RGB_NUM		(LED_NUM/3)
 static unsigned char loop_end[MAX_EFFECT][RGB_NUM] = {0};
 static AW_MULTI_BREATH_DATA_STRUCT *effect_data[MAX_EFFECT] = {NULL};
 static unsigned char num[MAX_EFFECT] = {0};
-static AW_COLOR_STRUCT source_color[MAX_EFFECT][RGB_NUM];//leds_aw210xx_reg.h中定义，就是跑马和呼吸的结构体
+static AW_COLOR_STRUCT source_color[MAX_EFFECT][RGB_NUM];//leds_aw210xx_reg.h
 static AW_COLOR_STRUCT destination_color[MAX_EFFECT][RGB_NUM];
-static ALGO_DATA_STRUCT algo_data[MAX_EFFECT];//aw_breath_algorithm.h中定义
+static ALGO_DATA_STRUCT algo_data[MAX_EFFECT];//aw_breath_algorithm.h
 static ALGO_DATA_STRUCT aw210xx_algo_data[MAX_EFFECT][RGB_NUM];
 static ALGO_DATA_STRUCT aw210xx_algo_color[MAX_EFFECT][RGB_NUM];
 static unsigned char colorful_phase_nums[MAX_EFFECT][RGB_NUM] = {0};

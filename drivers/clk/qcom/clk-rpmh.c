@@ -844,12 +844,19 @@ static struct clk_hw *of_clk_rpmh_hw_get(struct of_phandle_args *clkspec,
 }
 
 DEFINE_CLK_RPMH_FIXED(pineapple, bi_tcxo, bi_tcxo_ao, xo_pad, xo_pad_ao, 2);
+#ifdef OPLUS_FEATURE_DISPLAY
+DEFINE_CLK_RPMH_VRM(clk11, _a3, "clka11", 2);
+#endif /* OPLUS_FEATURE_DISPLAY */
 
 static struct clk_hw *pineapple_rpmh_clocks[] = {
 	[RPMH_CXO_PAD_CLK]      = &clk_rpmh_xo_pad_div2.hw,
 	[RPMH_CXO_PAD_CLK_A]    = &clk_rpmh_xo_pad_div2_ao.hw,
 	[RPMH_CXO_CLK]          = &pineapple_bi_tcxo.hw,
 	[RPMH_CXO_CLK_A]        = &pineapple_bi_tcxo_ao.hw,
+#ifdef OPLUS_FEATURE_DISPLAY
+	[RPMH_DIV_CLK1]         = &clk_rpmh_clk11_a3.hw,
+	[RPMH_DIV_CLK1_A]       = &clk_rpmh_clk11_a3_ao.hw,
+#endif /* OPLUS_FEATURE_DISPLAY */
 	[RPMH_LN_BB_CLK1]	= &clk_rpmh_clk6_a2.hw,
 	[RPMH_LN_BB_CLK1_A]	= &clk_rpmh_clk6_a2_ao.hw,
 	[RPMH_LN_BB_CLK2]	= &clk_rpmh_clk7_a2.hw,

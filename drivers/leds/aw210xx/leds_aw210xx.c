@@ -49,7 +49,9 @@ static int workqueue_flag = 0;
 static int ledbri[5] = {0};
 //static int led_esd_color[3][4] = {0};
 static int load_num = 0;
-
+static int music_rate = 300;
+static int music_timer = 0;
+static int brightness_ratio = 255;
 static int aw210xx_hw_enable(struct aw210xx *aw210xx, bool flag);
 static int aw210xx_led_init(struct aw210xx *aw210xx);
 static int aw210xx_led_change_mode(struct aw210xx *led, enum AW2023_LED_MODE mode);
@@ -75,8 +77,11 @@ void reset_led(void);
 
 #define LED_SUPPORT_TYPE					"support"
 // #define BLINK_USE_AW210XX
-
+static int workqueue_flow_flag = 0;
 struct aw210xx *led_default;
+
+void run_flow_effect(struct aw210xx *aw210xx);
+void run_rainbow_effect(struct aw210xx *aw210xx);
 
 static bool oplus_boot_mode_is_power_off_charging(void)
 {
@@ -880,10 +885,10 @@ void run_alwayson_effect(struct aw210xx *aw210xx){
 
 		brightness_sbmd_setup(BR_RESOLUTION_8BIT , false);
 		for(i=0;i<3;i++){
-			aw210xx_i2c_write(led, AW210XX_REG_BR00L + 2*i, new_always_on_color[i][8]);
-			aw210xx_i2c_write(led, AW210XX_REG_BR03L + 2*i, new_always_on_color[i][8]);
-			aw210xx_i2c_write(led, AW210XX_REG_BR06L + 2*i, new_always_on_color[i][8]);
-			aw210xx_i2c_write(led, AW210XX_REG_BR09L + 2*i, new_always_on_color[i][8]);
+			aw210xx_i2c_write(led, AW210XX_REG_BR00L + 2*i, new_always_on_color[i][8]*brightness_ratio/255);
+			aw210xx_i2c_write(led, AW210XX_REG_BR03L + 2*i, new_always_on_color[i][8]*brightness_ratio/255);
+			aw210xx_i2c_write(led, AW210XX_REG_BR06L + 2*i, new_always_on_color[i][8]*brightness_ratio/255);
+			aw210xx_i2c_write(led, AW210XX_REG_BR09L + 2*i, new_always_on_color[i][8]*brightness_ratio/255);
 
 			aw210xx_i2c_write(aw210xx_id1, AW210XX_REG_BR00L + 2*i, new_always_on_color[i][8]);
 			aw210xx_i2c_write(aw210xx_id1, AW210XX_REG_BR03L + 2*i, new_always_on_color[i][8]);
@@ -963,7 +968,6 @@ void run_music_effect(struct aw210xx *aw210xx){
 		aw210xx_update(aw210xx_id1);
 	}
 }
-
 void run_notify_effect_autonomous(struct aw210xx *aw210xx){
 
 	struct aw210xx *aw210xx_id1 = aw210xx_g_chip[1][0];
@@ -1459,9 +1463,8 @@ static void aw210xx_brightness(struct aw210xx *led)
 			AW_LOG("id = %d led_groups_num = %d \n", led->id, led_groups_num);
 		}
 	}
-	else 
+	else
 #endif
-	
 	if (led->pdata->led_mode == AW210XX_LED_INDIVIDUAL_CTL_BREATH) {
 		/*red led, green led max current is 20ma, blue led max current is 10ma*/
 		for (j = 0; j < led_groups_num; j++) {
@@ -1527,7 +1530,6 @@ static void aw210xx_brightness(struct aw210xx *led)
 			led_brightness = (led->cdev.brightness) * led->color_ratio[0] / led->color_ratio[1];
 			AW_LOG("id = %d set brightness = %d\n", led->id, led_brightness);
 		}
-
 		led->br_res = BR_RESOLUTION_8BIT;
 		aw210xx_br_res_set(led);
 		/* sbmd enable */
@@ -1592,7 +1594,7 @@ static void aw210xx_brightness(struct aw210xx *led)
 		aw210xx_i2c_write(led, AW210XX_REG_ABMT1 ,
 				(led->pdata->fall_time_ms << 4 | led->pdata->off_time_ms));
 
-		aw210xx_i2c_write(led, AW210XX_REG_GBRH, 0xff);
+		aw210xx_i2c_write(led, AW210XX_REG_GBRH, 0xff*brightness_ratio/255);
 		aw210xx_i2c_write(led, AW210XX_REG_GBRL, 0x00);
 		aw210xx_i2c_write(led, AW210XX_REG_ABMCFG, 0x03);
 
@@ -1655,10 +1657,18 @@ static void aw210xx_brightness(struct aw210xx *led)
 		aw210xx_update(aw210xx_id1);
 	}
 
-	AW_LOG("%s:  brightness[%d]=%x led_mode[%d]=%d \n",__func__,led->id,led_brightness,led->id,led->pdata->led_mode);
+	AW_LOG("%s:  brightness[%d]=%x led_mode[%d]=%x \n",__func__,led->id,led_brightness,led->id,led->pdata->led_mode);
 
 out:
-
+	if((effect_state.state[AW210XX_LED_FLOW_CTL_MODE]==1 || effect_state.state[AW210XX_LED_RAINBOW_CTL_MODE]==1)&& !workqueue_flow_flag){
+		AW_LOG("workqueue_flow_flag=1\n");
+		workqueue_flow_flag = 1;
+		queue_delayed_work(led_default->aw210_led_flow, &led_default->flow_led_work,0);
+	} else if (((effect_state.state[AW210XX_LED_FLOW_CTL_MODE]==0 &&effect_state.state[AW210XX_LED_RAINBOW_CTL_MODE]==0)||led->cdev.brightness == 0)&&workqueue_flow_flag){
+		AW_LOG("workqueue_flow_flag=0\n");
+		workqueue_flow_flag = 0;
+		cancel_delayed_work(&led_default->flow_led_work);
+	}
 	if (led->cdev.brightness > 0 && !workqueue_flag) {
 		queue_delayed_work(led_default->aw210_led_wq, &led_default->aw210_led_work,LED_ESD_WORK_TIME * HZ);
 		workqueue_flag = 1;
@@ -1708,6 +1718,21 @@ static void aw210_work_func(struct work_struct *aw210_work)
 	queue_delayed_work(led->aw210_led_wq, &led->aw210_led_work,3 * HZ);
 }
 
+static void flow_work_func(struct work_struct *aw210_work)
+{
+	struct aw210xx *led = container_of(aw210_work, struct aw210xx,flow_led_work.work);
+
+	AW_LOG("flow_work_func enter music_rate=%d\n",music_rate);
+	if(effect_state.state[AW210XX_LED_FLOW_CTL_MODE]==1) {
+		AW_LOG("flow_work_func enter AW210XX_LED_FLOW_CTL_MODE\n");
+		run_flow_effect(led);
+	} else if(effect_state.state[AW210XX_LED_RAINBOW_CTL_MODE]==1) {
+		AW_LOG("flow_work_func enter AW210XX_LED_RAINBOW_CTL_MODE\n");
+		run_rainbow_effect(led);
+	}
+	aw210xx_update(led);
+	queue_delayed_work(led->aw210_led_flow, &led->flow_led_work,msecs_to_jiffies(music_rate));
+}
 static void aw210xx_breath_func(struct work_struct *work)
 {
 	struct aw210xx *led = container_of(work, struct aw210xx, breath_work.work);
@@ -1855,7 +1880,6 @@ static int aw210xx_hw_enable(struct aw210xx *aw210xx, bool flag)
 	} else {
 		AW_ERR("failed\n");
 	}
-
 	return 0;
 }
 
@@ -1875,7 +1899,6 @@ static int aw210xx_led_init(struct aw210xx *aw210xx)
 	aw210xx_osc_pwm_set(aw210xx);
 	/* br_res select */
 	aw210xx_br_res_set(aw210xx);
-	
 	/* 2. check id */
 	/*aw_i2c_read_one_byte(REG_RESET, &val);*/ /* 0x7f 0x18 */
 	/*if (val != AW210XX_CHIPID)
@@ -2701,8 +2724,8 @@ void store_effect_color_and_brightness(char *tmp_buf)
 				}
 				rgb = data;
 				if(led_order[i] <8) {
-					new_always_on_color[0][led_order[i]] = (rgb >> 16) & 0xff; 
-					new_always_on_color[1][led_order[i]] = (rgb >>8) & 0xff; 
+					new_always_on_color[0][led_order[i]] = (rgb >> 16) & 0xff;
+					new_always_on_color[1][led_order[i]] = (rgb >>8) & 0xff;
 					new_always_on_color[2][led_order[i]] = rgb & 0xff;
 				}
 				else {
@@ -2710,12 +2733,12 @@ void store_effect_color_and_brightness(char *tmp_buf)
 				}
 			}
 			break;
-		case MUSIC_EFFECT:
-			effect_state.data[AW210XX_LED_MUSICMODE] = 1;
-			music_color[0][8] = (br_rgb >> 16) & 0xff; music_color[1][8]= (br_rgb >> 8) & 0xff; music_color[2][8] = br_rgb & 0xff;
-			music_color[0][led_order[0]] = (rgb >> 16) & 0xff; 
-			music_color[1][led_order[0]] = (rgb >>8) & 0xff; 
-			music_color[2][led_order[0]] = rgb & 0xff; 
+		case FLOW_EFFECT:
+			effect_state.data[AW210XX_LED_FLOW_CTL_MODE] = 1;
+			flow_color[0][8] = (br_rgb >> 16) & 0xff; flow_color[1][8]= (br_rgb >> 8) & 0xff; flow_color[2][8] = br_rgb & 0xff;
+			flow_color[0][led_order[0]] = (rgb >> 16) & 0xff;
+			flow_color[1][led_order[0]] = (rgb >>8) & 0xff;
+			flow_color[2][led_order[0]] = rgb & 0xff;
 			for(i=1;i<8;i++)
 			{
 				str = strsep(&tmp_buf, delim);
@@ -2730,8 +2753,66 @@ void store_effect_color_and_brightness(char *tmp_buf)
 				}
 				rgb = data;
 				if(led_order[i] <8) {
-					music_color[0][led_order[i]] = (rgb >> 16) & 0xff; 
-					music_color[1][led_order[i]] = (rgb >>8) & 0xff; 
+					flow_color[0][led_order[i]] = (rgb >> 16) & 0xff;
+					flow_color[1][led_order[i]] = (rgb >>8) & 0xff;
+					flow_color[2][led_order[i]] = rgb & 0xff;
+				}
+				else {
+					AW_ERR("led_order[i]  is out of index");
+				}
+			}
+			break;
+		case RAINBOW_EFFECT:
+			effect_state.data[AW210XX_LED_RAINBOW_CTL_MODE] = 1;
+			bainbow_color[0][8] = (br_rgb >> 16) & 0xff; bainbow_color[1][8]= (br_rgb >> 8) & 0xff; bainbow_color[2][8] = br_rgb & 0xff;
+			bainbow_color[0][led_order[0]] = (rgb >> 16) & 0xff;
+			bainbow_color[1][led_order[0]] = (rgb >>8) & 0xff;
+			bainbow_color[2][led_order[0]] = rgb & 0xff;
+			for(i=1;i<8;i++)
+			{
+				str = strsep(&tmp_buf, delim);
+				if (str == NULL) {
+					AW_ERR("error in parsing 1.1");
+					return;
+				}
+				ret = kstrtoul(str, 16, &data);
+				if (ret) {
+					AW_ERR("error in parsing 1.2");
+					return;
+				}
+				rgb = data;
+				if(led_order[i] <8) {
+					bainbow_color[0][led_order[i]] = (rgb >> 16) & 0xff;
+					bainbow_color[1][led_order[i]] = (rgb >>8) & 0xff;
+					bainbow_color[2][led_order[i]] = rgb & 0xff;
+				}
+				else {
+					AW_ERR("led_order[i]  is out of index");
+				}
+			}
+			break;
+		case MUSIC_EFFECT:
+			effect_state.data[AW210XX_LED_MUSICMODE] = 1;
+			music_color[0][8] = (br_rgb >> 16) & 0xff; music_color[1][8]= (br_rgb >> 8) & 0xff; music_color[2][8] = br_rgb & 0xff;
+			music_color[0][led_order[0]] = (rgb >> 16) & 0xff;
+			music_color[1][led_order[0]] = (rgb >>8) & 0xff;
+			music_color[2][led_order[0]] = rgb & 0xff;
+			for(i=1;i<8;i++)
+			{
+				str = strsep(&tmp_buf, delim);
+				if (str == NULL) {
+					AW_ERR("error in parsing 1.1");
+					return;
+				}
+				ret = kstrtoul(str, 16, &data);
+				if (ret) {
+					AW_ERR("error in parsing 1.2");
+					return;
+				}
+				rgb = data;
+				if(led_order[i] <8) {
+					music_color[0][led_order[i]] = (rgb >> 16) & 0xff;
+					music_color[1][led_order[i]] = (rgb >>8) & 0xff;
 					music_color[2][led_order[i]] = rgb & 0xff;
 				}
 				else {
@@ -2741,7 +2822,7 @@ void store_effect_color_and_brightness(char *tmp_buf)
 			break;
 		default:
 			break;
-	}	
+	}
 }
 
 static ssize_t aw210xx_effectdata_attr_store(struct device *dev,
@@ -3109,14 +3190,189 @@ static ssize_t aw210xx_led_toff_attr_store(struct device *dev,
 	return cnt;
 }
 
-static ssize_t aw210xx_led_support_attr_show (struct device *dev,
-		struct device_attribute *attr, char *buf)
+static ssize_t aw210xx_led_brightness_ratio_attr_show (struct device *dev,
+	struct device_attribute *attr, char *buf)
 {
-	int prj_id = 0;
+	return snprintf(buf, PAGE_SIZE, "%x\n",brightness_ratio);
+
+}
+
+static ssize_t aw210xx_led_brightness_ratio_attr_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t cnt)
+{
+	unsigned long data = 0;
+	struct led_classdev *led_cdev = dev_get_drvdata(dev);
+	struct aw210xx *led = container_of(led_cdev, struct aw210xx, cdev);
+	int i = 0;
+
+	ssize_t ret = -EINVAL;
+
+	ret = kstrtoul(buf, 10, &data);
+	if (ret)
+		return ret;
+
+	mutex_lock(&led->pdata->led->lock);
+	brightness_ratio = data;
+	for(i=0;i<3;i++){
+		aw210xx_i2c_write(led, AW210XX_REG_BR00L + 2*i, brightness_ratio);
+		aw210xx_i2c_write(led, AW210XX_REG_BR03L + 2*i, brightness_ratio);
+		aw210xx_i2c_write(led, AW210XX_REG_BR06L + 2*i, brightness_ratio);
+	}
+	aw210xx_update(led);
+	mutex_unlock(&led->pdata->led->lock);
+
+	AW_LOG("[%d]: brightness_ratio=%x\n",led->id,brightness_ratio);
+
+	return cnt;
+}
+
+static ssize_t aw210xx_led_music_rate_attr_show (struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%x\n",music_rate);
+
+}
+
+static ssize_t aw210xx_led_music_rate_attr_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t cnt)
+{
+	unsigned long data = 0;
 	struct led_classdev *led_cdev = dev_get_drvdata(dev);
 	struct aw210xx *led = container_of(led_cdev, struct aw210xx, cdev);
 
-	prj_id = get_project();
+	ssize_t ret = -EINVAL;
+
+	ret = kstrtoul(buf, 10, &data);
+	if (ret)
+		return ret;
+
+	mutex_lock(&led->pdata->led->lock);
+	if(music_timer){
+		music_timer--;
+	}else {
+		if(data > 4){
+			music_rate = 50;
+			music_timer = 5;
+		}else if(data > 2 && data < 4){
+			music_rate = 200;
+		}else {
+			music_rate = 400;
+		}
+	}
+	mutex_unlock(&led->pdata->led->lock);
+
+	AW_LOG("[%d]: music_rate=%d\n",led->id,music_rate);
+
+	return cnt;
+}
+void run_flow_effect(struct aw210xx *aw210xx)
+{
+	int i = 0;
+	int Rotation_color[3][9];
+
+	if(effect_state.data[AW210XX_LED_FLOW_CTL_MODE] == 1&&aw210xx->cdev.brightness != 0) {
+		music_rate = 300;
+		effect_state.data[AW210XX_LED_FLOW_CTL_MODE] = 0;
+		aw210xx_i2c_write(aw210xx, AW210XX_REG_GCFG, 0x00);
+		aw210xx_i2c_write(aw210xx,AW210XX_REG_GCR2, 0x0c);
+		for(i=0;i<3;i++){
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_BR00L + 2*i, flow_color[i][8]*brightness_ratio/255);
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_BR03L + 2*i, flow_color[i][8]*brightness_ratio/255);
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_BR06L + 2*i, flow_color[i][8]*brightness_ratio/255);
+
+			AW_LOG("[%d]: flow_color[0]= %x,flow_color[1]= %x,flow_color[2]= %x \n",i,flow_color[i][0],flow_color[i][1],flow_color[i][2]);
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_SL00 + i, flow_color[i][0]);
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_SL03 + i, flow_color[i][1]);
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_SL06 + i, flow_color[i][2]);
+		}
+		for(i=0;i<3;i++){
+			temp_color[0][i] = flow_color[0][i];
+			temp_color[1][i] = flow_color[1][i];
+			temp_color[2][i] = flow_color[2][i];
+		}
+	}
+
+	for(i=0;i<3;i++){
+		Rotation_color[0][i] = temp_color[0][i];
+		Rotation_color[1][i] = temp_color[1][i];
+		Rotation_color[2][i] = temp_color[2][i];
+	}
+
+	for(i=0;i<3;i++){
+		aw210xx_i2c_write(aw210xx,AW210XX_REG_SL00+i,Rotation_color[i][0]);
+		aw210xx_i2c_write(aw210xx,AW210XX_REG_SL03+i,Rotation_color[i][1]);
+		aw210xx_i2c_write(aw210xx,AW210XX_REG_SL06+i,Rotation_color[i][2]);
+	}
+
+	for(i=0;i<3;i++){
+		Rotation_color[0][i] = temp_color[0][(i+1)%3];
+		Rotation_color[1][i] = temp_color[1][(i+1)%3];
+		Rotation_color[2][i] = temp_color[2][(i+1)%3];
+	}
+	for(i=0;i<3;i++){
+		temp_color[0][i] = Rotation_color[0][i];
+		temp_color[1][i] = Rotation_color[1][i];
+		temp_color[2][i] = Rotation_color[2][i];
+	}
+
+}
+
+
+void run_rainbow_effect(struct aw210xx *aw210xx)
+{
+	int i = 0;
+	int Rotation_color[3][9];
+
+	if(effect_state.data[AW210XX_LED_RAINBOW_CTL_MODE] == 1&&aw210xx->cdev.brightness != 0) {
+		effect_state.data[AW210XX_LED_RAINBOW_CTL_MODE] = 0;
+		aw210xx_i2c_write(aw210xx, AW210XX_REG_GCFG, 0x00);
+		aw210xx_i2c_write(aw210xx,AW210XX_REG_GCR2, 0x0c);
+		for(i=0;i<3;i++){
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_BR00L + 2*i, bainbow_color[i][8]*brightness_ratio/255);
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_BR03L + 2*i, bainbow_color[i][8]*brightness_ratio/255);
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_BR06L + 2*i, bainbow_color[i][8]*brightness_ratio/255);
+
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_SL00 + i, bainbow_color[i][0]);
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_SL03 + i, bainbow_color[i][1]);
+			aw210xx_i2c_write(aw210xx, AW210XX_REG_SL06 + i, bainbow_color[i][2]);
+		}
+		for(i=0;i<8;i++){
+			temp_color[0][i] = bainbow_color[0][i];
+			temp_color[1][i] = bainbow_color[1][i];
+			temp_color[2][i] = bainbow_color[2][i];
+		}
+	}
+
+	for(i=0;i<8;i++){
+		Rotation_color[0][i] = temp_color[0][i];
+		Rotation_color[1][i] = temp_color[1][i];
+		Rotation_color[2][i] = temp_color[2][i];
+	}
+
+	for(i=0;i<3;i++){
+		aw210xx_i2c_write(aw210xx,AW210XX_REG_SL00+i,Rotation_color[i][0]);
+		aw210xx_i2c_write(aw210xx,AW210XX_REG_SL03+i,Rotation_color[i][1]);
+		aw210xx_i2c_write(aw210xx,AW210XX_REG_SL06+i,Rotation_color[i][2]);
+	}
+
+	for(i=0;i<8;i++){
+		Rotation_color[0][i] = temp_color[0][(i+1)%8];
+		Rotation_color[1][i] = temp_color[1][(i+1)%8];
+		Rotation_color[2][i] = temp_color[2][(i+1)%8];
+	}
+
+	for(i=0;i<8;i++){
+		temp_color[0][i] = Rotation_color[0][i];
+		temp_color[1][i] = Rotation_color[1][i];
+		temp_color[2][i] = Rotation_color[2][i];
+	}
+
+}
+static ssize_t aw210xx_led_support_attr_show (struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct led_classdev *led_cdev = dev_get_drvdata(dev);
+	struct aw210xx *led = container_of(led_cdev, struct aw210xx, cdev);
 
 //	return snprintf(buf, PAGE_SIZE, "%s-%d-white\n", LED_SUPPORT_TYPE, (int)led->cdev.max_brightness);
 	return snprintf(buf, PAGE_SIZE, "%s-%d\n",LED_SUPPORT_TYPE,led->cdev.max_brightness);
@@ -3141,6 +3397,8 @@ static DEVICE_ATTR(ton, 0664, aw210xx_led_ton_attr_show, aw210xx_led_ton_attr_st
 static DEVICE_ATTR(toff, 0664, aw210xx_led_toff_attr_show, aw210xx_led_toff_attr_store);
 static DEVICE_ATTR(tr1, 0664, aw210xx_led_tr1_attr_show, aw210xx_led_tr1_attr_store);
 static DEVICE_ATTR(tf1, 0664, aw210xx_led_tf1_attr_show, aw210xx_led_tf1_attr_store);
+static DEVICE_ATTR(brightness_ratio, 0664, aw210xx_led_brightness_ratio_attr_show, aw210xx_led_brightness_ratio_attr_store);
+static DEVICE_ATTR(music_rate, 0664, aw210xx_led_music_rate_attr_show, aw210xx_led_music_rate_attr_store);
 
 static struct attribute *aw210xx_attributes[] = {
 	&dev_attr_support.attr,
@@ -3162,6 +3420,8 @@ static struct attribute *aw210xx_attributes[] = {
 	&dev_attr_toff.attr,
 	&dev_attr_tr1.attr,
 	&dev_attr_tf1.attr,
+	&dev_attr_brightness_ratio.attr,
+	&dev_attr_music_rate.attr,
 	NULL,
 };
 
@@ -3377,6 +3637,12 @@ static int aw210xx_led_change_mode(struct aw210xx *led,
 		case AW210XX_LED_NEW_ALWAYSON:
 			led->pdata->led_mode = AW210XX_LED_NEW_ALWAYSON;
 			break;
+		case AW210XX_LED_FLOW_CTL_MODE:
+			led->pdata->led_mode = AW210XX_LED_FLOW_CTL_MODE;
+			break;
+		case AW210XX_LED_RAINBOW_CTL_MODE:
+			led->pdata->led_mode = AW210XX_LED_RAINBOW_CTL_MODE;
+			break;
 		case AW210XX_LED_BLINKMODE:
 			led->pdata->hold_time_ms = 4;
 			led->pdata->off_time_ms =  4;
@@ -3550,6 +3816,50 @@ static void aw210xx_led_individual_ctl_breath_deactivate(struct led_classdev *cd
 	AW_LOG("[%d]: individual_ctl_breath deactivate",led->id);
 }
 
+static int aw210xx_led_flow_ctl_mode_activate(struct led_classdev *cdev)
+{
+	int ret = 0;
+	struct aw210xx *led = container_of(cdev, struct aw210xx, cdev);
+
+	AW_LOG("[%d]: activate",led->id);
+	ret = aw210xx_led_change_mode(led, AW210XX_LED_FLOW_CTL_MODE);
+	if (ret < 0) {
+		dev_err(led->cdev.dev, "%s: aw210xx_led_change_mode fail\n", __func__);
+		return ret;
+	}
+	return ret;
+}
+
+static void aw210xx_led_flow_ctl_mode_deactivate(struct led_classdev *cdev)
+{
+	struct aw210xx *led = container_of(cdev, struct aw210xx, cdev);
+
+	aw210xx_led_change_mode(led, AW210XX_LED_NONE);
+	AW_LOG("[%d]: multicolor_ctl_breath deactivate",led->id);
+}
+
+static int aw210xx_led_rainbow_ctl_mode_activate(struct led_classdev *cdev)
+{
+	int ret = 0;
+	struct aw210xx *led = container_of(cdev, struct aw210xx, cdev);
+
+	AW_LOG("[%d]: activate",led->id);
+
+	ret = aw210xx_led_change_mode(led, AW210XX_LED_RAINBOW_CTL_MODE);
+	if (ret < 0) {
+		dev_err(led->cdev.dev, "%s: aw210xx_led_change_mode fail\n", __func__);
+		return ret;
+	}
+	return ret;
+}
+
+static void aw210xx_led_rainbow_ctl_mode_deactivate(struct led_classdev *cdev)
+{
+	struct aw210xx *led = container_of(cdev, struct aw210xx, cdev);
+	aw210xx_led_change_mode(led, AW210XX_LED_NONE);
+	AW_LOG("[%d]: multicolor_ctl_breath deactivate",led->id);
+}
+
 static int aw210xx_led_music_activate(struct led_classdev *cdev)
 {
 	int ret = 0;
@@ -3695,6 +4005,18 @@ static struct led_trigger aw210xx_led_trigger[LEDMODE_MAX_NUM] = {
 		.activate = aw210xx_led_new_always_on_activate,
 		.deactivate = aw210xx_led_new_always_on_deactivate,
 //		.groups = aw210xx_led_new_always_on_mode_groups,
+	},
+	{
+		.name = "flow_ctl_mode",
+		.activate = aw210xx_led_flow_ctl_mode_activate,
+		.deactivate = aw210xx_led_flow_ctl_mode_deactivate,
+//		.groups = aw210xx_led_flow_ctl_mode_groups,
+	},
+	{
+		.name = "rainbow_ctl_mode",
+		.activate = aw210xx_led_rainbow_ctl_mode_activate,
+		.deactivate = aw210xx_led_rainbow_ctl_mode_deactivate,
+//		.groups = aw210xx_led_rainbow_ctl_mode_mode_groups,
 	},
 	{
 		.name = "blink_mode",
@@ -3915,6 +4237,7 @@ static int aw210xx_i2c_probe(struct i2c_client *i2c)
 	struct aw210xx *aw210xx;
 	struct device_node *np = i2c->dev.of_node;
 	int ret, num_leds = 0, i = 0;
+
 	if (oplus_boot_mode_is_power_off_charging()) {
 		AW_LOG("boot_mode is power_off_charging skip probe");
 		return 0;
@@ -4041,9 +4364,15 @@ static int aw210xx_i2c_probe(struct i2c_client *i2c)
 			dev_err(&i2c->dev, "aw210_led_workqueue error\n");
 			goto err_parse_dt;
 		}
+		aw210xx->aw210_led_flow = create_singlethread_workqueue("flow_led_workqueue");
+		if (!aw210xx->aw210_led_flow) {
+			dev_err(&i2c->dev, "flow_led_workqueue error\n");
+			goto err_parse_dt;
+		}
 		INIT_DELAYED_WORK(&aw210xx->aw210_led_work, aw210_work_func);
+		INIT_DELAYED_WORK(&aw210xx->flow_led_work, flow_work_func);
 	}
-	
+
 	effect_state.cur_effect = -1;
 	effect_state.prev_effect = -1;
 	for(i=0;i<AW210XX_LED_MAXMODE;i++)
@@ -4060,8 +4389,8 @@ fail_led_trigger:
 	aw210xx_led_err_handle(aw210xx, num_leds);
 err_sysfs:
 err_id:
-	gpio_free(aw210xx->vbled_enable_gpio);
-	gpio_free(aw210xx->enable_gpio);
+	if (aw210xx->aw210xx_led_id == 0)
+		aw210xx_hw_enable(aw210xx, false);
 err_gpio_request:
 err_parse_dt:
 	devm_kfree(&i2c->dev, aw210xx);
@@ -4112,7 +4441,6 @@ static struct i2c_driver aw210xx_i2c_driver = {
 static int __init aw210xx_i2c_init(void)
 {
 	int ret = 0;
-
 	AW_LOG("enter, aw210xx driver version %s\n", AW210XX_DRIVER_VERSION);
 
 	ret = i2c_add_driver(&aw210xx_i2c_driver);
