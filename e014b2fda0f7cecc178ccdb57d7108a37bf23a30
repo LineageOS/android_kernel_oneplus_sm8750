@@ -34,6 +34,24 @@
       "parentUuid": "613d3b39_5bd100fd",
       "revId": "e014b2fda0f7cecc178ccdb57d7108a37bf23a30",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "43ef5270_06c51cfa",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 13648
+      },
+      "writtenOn": "2025-11-18T07:38:54Z",
+      "side": 1,
+      "message": "Yea, we can build as pure external kmods.",
+      "parentUuid": "101b5cce_bae45008",
+      "revId": "e014b2fda0f7cecc178ccdb57d7108a37bf23a30",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
