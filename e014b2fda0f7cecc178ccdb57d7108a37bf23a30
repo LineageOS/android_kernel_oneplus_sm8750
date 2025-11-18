@@ -16,6 +16,24 @@
       "message": "Makes no sense to have NFC drivers here.",
       "revId": "e014b2fda0f7cecc178ccdb57d7108a37bf23a30",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "101b5cce_bae45008",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 32253
+      },
+      "writtenOn": "2025-11-18T07:36:02Z",
+      "side": 1,
+      "message": "Not sure if it would be better to just make a symlink into `../../../sm8750-modules/oplus/kernel/nfc/*` (like `drivers/soc/oplus/*`) or just mentioning it on `TARGET_KERNEL_EXT_MODULES`. lmk which approach you prefer.",
+      "parentUuid": "613d3b39_5bd100fd",
+      "revId": "e014b2fda0f7cecc178ccdb57d7108a37bf23a30",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
