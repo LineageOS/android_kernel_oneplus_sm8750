@@ -1270,6 +1270,7 @@ static void aw210xx_brightness(struct aw210xx *led)
 	int led_brightness = 0;
 	struct aw210xx *aw210xx_id1 = NULL;
 	int led_groups_num = led->pdata->led->led_groups_num;
+	int breath_rise_time = 0,breath_fall_time = 0;
 
 	AW_LOG("id = %d brightness = %d, boot_mode = %d \n", led->id, led->cdev.brightness,get_boot_mode());
 	if (led->id > 5) {
@@ -1589,19 +1590,36 @@ static void aw210xx_brightness(struct aw210xx *led)
 
 	/*aw210xx led breath set up*/
 	if (led->pdata->led_mode == AW210XX_LED_BREATHMODE || led->pdata->led_mode == AW210XX_LED_INDIVIDUAL_CTL_BREATH) {
-		aw210xx_i2c_write(led, AW210XX_REG_ABMT0 ,
-				(led->pdata->rise_time_ms << 4 | led->pdata->hold_time_ms));
-		aw210xx_i2c_write(led, AW210XX_REG_ABMT1 ,
-				(led->pdata->fall_time_ms << 4 | led->pdata->off_time_ms));
+		if(led->pdata->led_mode == AW210XX_LED_BREATHMODE){
+			aw210xx_i2c_write(led, AW210XX_REG_ABMT0,
+					(led->pdata->rise_time_ms << 4 | led->pdata->hold_time_ms));
+			aw210xx_i2c_write(led, AW210XX_REG_ABMT1,
+					(led->pdata->fall_time_ms << 4 | led->pdata->off_time_ms));
+				aw210xx_i2c_write(led, AW210XX_REG_GBRH, 0xff);
+		} else {
+			if (led->pdata->rise_time_ms*0xff / brightness_ratio > 0xf) {
+				breath_rise_time = 0x0f;
+			} else {
+				breath_rise_time = led->pdata->rise_time_ms*0xff / brightness_ratio;
+			}
+			if (led->pdata->fall_time_ms*0xff / brightness_ratio > 0xf) {
+				breath_fall_time = 0x0f;
+			} else {
+				breath_fall_time = led->pdata->fall_time_ms*0xff / brightness_ratio;
+			}
 
-		aw210xx_i2c_write(led, AW210XX_REG_GBRH, 0xff*brightness_ratio/255);
+			aw210xx_i2c_write(led, AW210XX_REG_ABMT0, (breath_rise_time << 4 | led->pdata->hold_time_ms));
+			aw210xx_i2c_write(led, AW210XX_REG_ABMT1, (breath_fall_time << 4 | led->pdata->hold_time_ms));
+			aw210xx_i2c_write(led, AW210XX_REG_GBRH, 0xff*brightness_ratio / 255);
+			AW_LOG("%s:breath_rise_time=%d, breath_fall_time=%d\n", __func__, breath_rise_time, breath_fall_time);
+		}
 		aw210xx_i2c_write(led, AW210XX_REG_GBRL, 0x00);
 		aw210xx_i2c_write(led, AW210XX_REG_ABMCFG, 0x03);
 
 		if (led_groups_num == 8 && aw210xx_id1 != NULL) {
-			aw210xx_i2c_write(aw210xx_id1, AW210XX_REG_ABMT0 ,
+			aw210xx_i2c_write(aw210xx_id1, AW210XX_REG_ABMT0,
 					(led->pdata->rise_time_ms << 4 | led->pdata->hold_time_ms));
-			aw210xx_i2c_write(aw210xx_id1, AW210XX_REG_ABMT1 ,
+			aw210xx_i2c_write(aw210xx_id1, AW210XX_REG_ABMT1,
 					(led->pdata->fall_time_ms << 4 | led->pdata->off_time_ms));
 
 			aw210xx_i2c_write(aw210xx_id1, AW210XX_REG_GBRH, 0xff);
@@ -1747,6 +1765,7 @@ static void aw210xx_breath_func(struct work_struct *work)
 			aw210xx_i2c_write(aw210xx_id1, AW210XX_REG_ABMGO, 0x01);
 		}
 	}
+	aw210xx_i2c_write(led, AW210XX_REG_ABMGO, 0x00);
 	aw210xx_i2c_write(led, AW210XX_REG_ABMGO, 0x01);
 }
 

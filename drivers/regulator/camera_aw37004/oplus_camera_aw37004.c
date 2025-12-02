@@ -273,17 +273,26 @@ static int aw37004_regulator_disable(struct regulator_dev *rdev)
 	mutex_lock(&fan_reg->chip_data->lock);
 	rc = aw37004_masked_write(fan_reg,AW37004_REG_ENABLE,
 		1u<<fan_reg->offset, 0);
-	mutex_unlock(&fan_reg->chip_data->lock);
 	if (rc < 0) {
 		LDO_LOGE(fan_reg,
 			"failed to disable regulator rc=%d\n", rc);
-		return rc;
+		goto unlock;
 	}
+	rc = aw37004_masked_write(fan_reg,AW37004_REG_RDIS,
+		1u<<fan_reg->offset, (1u<<fan_reg->offset));
+	if (rc < 0) {
+		LDO_LOGE(fan_reg,
+			"failed to disable regulator rc=%d\n", rc);
+		goto unlock;
+	}
+
 	fan_reg->cur_enable_status = 0;
 	fan_reg->chip_data->ldo_status = fan_reg->chip_data->ldo_status & ~(1u<<fan_reg->offset);
 
 	LDO_LOGI(fan_reg, "regulator disabled\n");
-	return 0;
+unlock:
+	mutex_unlock(&fan_reg->chip_data->lock);
+	return rc;
 }
 
 static int aw37004_regulator_is_enabled(struct regulator_dev *rdev)
