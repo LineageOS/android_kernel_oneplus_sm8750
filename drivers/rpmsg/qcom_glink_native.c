@@ -1105,6 +1105,7 @@ static int qcom_glink_rx_thread(void *data)
 	struct glink_channel *channel = data;
 	struct qcom_glink *glink = channel->glink;
 	unsigned long flags;
+	bool intent_ack;
 	int ret = 0;
 
 	for (;;) {
@@ -1164,6 +1165,7 @@ static int qcom_glink_rx_thread(void *data)
 			if (!(qcom_glink_rx_done_supported(&channel->ept) && ret == RPMSG_DEFER))
 				__qcom_glink_rx_done(glink, channel, intent, true);
 		} else {
+			intent_ack = intent->ack_pending;
 			ret = qcom_glink_alloc_intent_data(glink, channel, intent);
 			if (ret < 0) {
 				spin_lock_irqsave(&channel->recv_lock, flags);
@@ -1172,10 +1174,8 @@ static int qcom_glink_rx_thread(void *data)
 				continue;
 			}
 
-			if (intent->ack_pending) {
+			if (intent_ack)
 				qcom_glink_send_intent_req_ack(glink, channel, true);
-				intent->ack_pending = false;
-			}
 		}
 	}
 

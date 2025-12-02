@@ -25,6 +25,9 @@ xhci_ring_to_sgtable(struct xhci_sideband *sb, struct xhci_ring *ring)
 	size_t sz;
 	int i;
 
+	if(!sb->xhci)
+		return NULL;
+
 	dev = xhci_to_hcd(sb->xhci)->self.sysdev;
 	sz = ring->num_segs * TRB_SEGMENT_SIZE;
 	n_pages = PAGE_ALIGN(sz) >> PAGE_SHIFT;

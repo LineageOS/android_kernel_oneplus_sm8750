@@ -2077,7 +2077,7 @@ static int ufs_qcom_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op,
 
 	if (status == PRE_CHANGE) {
 #if defined(CONFIG_UFSFEATURE)
-		if (hba->dev_info.wmanufacturerid == UFS_VENDOR_SAMSUNG)
+		if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC))
 			ufsf_suspend(ufs_qcom_get_ufsf(hba), pm_op == UFS_SYSTEM_PM);
 #endif
 		return 0;
@@ -2128,7 +2128,7 @@ static int ufs_qcom_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 		ufs_active_time_get(hba);
 	//#endif
 #if defined(CONFIG_UFSFEATURE)
-	if (hba->dev_info.wmanufacturerid == UFS_VENDOR_SAMSUNG) {
+	if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC)) {
 		struct ufsf_feature *ufsf = ufs_qcom_get_ufsf(hba);
 
 		schedule_work(&ufsf->resume_work);
@@ -2579,7 +2579,11 @@ static int ufs_qcom_apply_dev_quirks(struct ufs_hba *hba)
 
 	if (hba->dev_info.wmanufacturerid == UFS_VENDOR_MICRON)
 		hba->dev_quirks |= UFS_DEVICE_QUIRK_DELAY_BEFORE_LPM;
-
+	/* the v7 and other ufs need to keep vcc on for stability */
+	if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC)) {
+		hba->rpm_lvl = 1;
+		hba->spm_lvl = 1;
+	}
 	return err;
 }
 
@@ -4725,7 +4729,7 @@ static void ufs_qcom_event_notify(struct ufs_hba *hba,
 	recordSignalerr(hba, *(u32 *)data, evt);
 	//#endif
 #if defined(CONFIG_UFSFEATURE)
-	if (hba->dev_info.wmanufacturerid == UFS_VENDOR_SAMSUNG) {
+	if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC)) {
 		if (evt == UFS_EVT_WL_SUSP_ERR)
 			ufsf_resume(ufs_qcom_get_ufsf(hba), true);
 	}
@@ -5332,7 +5336,7 @@ static int ufs_qcom_device_reset(struct ufs_hba *hba)
 	int ret = 0;
 
 #if defined(CONFIG_UFSFEATURE)
-	if (hba->dev_info.wmanufacturerid == UFS_VENDOR_SAMSUNG)
+	if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC))
 		ufsf_reset_host(ufs_qcom_get_ufsf(hba));
 #endif
 	/* reset gpio is optional */
@@ -5398,6 +5402,9 @@ static struct ufs_dev_quirk ufs_qcom_dev_fixups[] = {
 	{ .wmanufacturerid = UFS_VENDOR_TOSHIBA,
 	  .model = UFS_ANY_MODEL,
 	  .quirk = UFS_DEVICE_QUIRK_DELAY_AFTER_LPM },
+	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
+	  .model = "KLUFG4LHGC-B0E1",
+	  .quirk = UFS_DEVICE_QUIRK_SAMSUNG_QLC },
 	{}
 };
 
@@ -5405,7 +5412,7 @@ static void ufs_qcom_fixup_dev_quirks(struct ufs_hba *hba)
 {
 	ufshcd_fixup_dev_quirks(hba, ufs_qcom_dev_fixups);
 #if defined(CONFIG_UFSFEATURE)
-	if (hba->dev_info.wmanufacturerid == UFS_VENDOR_SAMSUNG)
+	if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC))
 		ufsf_set_init_state(hba);
 #endif
 }
@@ -5642,7 +5649,7 @@ static void ufs_qcom_config_scsi_dev(struct scsi_device *sdev)
 #if defined(CONFIG_UFSFEATURE)
 	struct ufs_hba *hba = shost_priv(sdev->host);
 
-	if (hba->dev_info.wmanufacturerid == UFS_VENDOR_SAMSUNG) {
+	if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC)) {
 		struct ufsf_feature *ufsf = ufs_qcom_get_ufsf(hba);
 
 		ufsf_slave_configure(ufsf, sdev);
@@ -6462,7 +6469,7 @@ static int ufs_qcom_probe(struct platform_device *pdev)
 	struct ufs_hba *hba = platform_get_drvdata(pdev);
 
 	/* Register hook for Samsung feature */
-	if (hba->dev_info.wmanufacturerid == UFS_VENDOR_SAMSUNG)
+	if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC))
 		ufs_samsung_register_hooks();
 #endif
 	return err;
@@ -6506,7 +6513,7 @@ static int ufs_qcom_remove(struct platform_device *pdev)
 	ufs_remove_oplus_dbg();
 	//#endif
 #if defined(CONFIG_UFSFEATURE)
-	if (hba->dev_info.wmanufacturerid == UFS_VENDOR_SAMSUNG)
+	if (hba->dev_quirks & (UFS_DEVICE_QUIRK_SAMSUNG_QLC))
 		ufsf_remove(ufs_qcom_get_ufsf(hba));
 #endif
 	ufshcd_remove(hba);

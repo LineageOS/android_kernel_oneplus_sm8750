@@ -4177,6 +4177,10 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc, bool force_power_collapse)
 
 	if (mdwc->dwc3)
 		dwc = platform_get_drvdata(mdwc->dwc3);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	if(dwc)
+		dwc->revision = DWC31_REVISION_200A;
+#endif
 
 	ret = dwc3_msm_check_suspend(mdwc);
 	if (ret < 0) {
@@ -7019,6 +7023,9 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 	} else {
 		dev_dbg(mdwc->dev, "%s: turn off host\n", __func__);
 		vbus_regulator_toggle(mdwc, false);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+		dwc->revision = DWC31_REVISION_180A;
+#endif
 
 		ret = pm_runtime_resume_and_get(&mdwc->dwc3->dev);
 		if (ret < 0) {
