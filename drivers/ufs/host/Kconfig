@@ -170,6 +170,40 @@ config UFSFEATURE
 	depends on SCSI_UFSHCD
 	help
 	  UFS feature activate such as tw, hid and etc.
+config UFSTW
+	bool "UFS Turbo Write support"
+	depends on SCSI_UFSHCD && UFSFEATURE
+	help
+	  UFS TW Feature Enable
+
+config UFSTW_DEBUG
+	bool "TW Debug Log Enable"
+	depends on SCSI_UFSHCD && UFSFEATURE && UFSTW
+	default n
+	help
+	  UFS TW Debug Enable (dmesg log[=if set debug sysfs] & BLK_TRACE msg)
+
+config UFSTW_IGNORE_GUARANTEE_BIT
+	bool "Ignore UFS Turbo Write Life Time Guarantee bit for POC"
+	default n
+	depends on SCSI_UFSHCD && UFSFEATURE && UFSTW
+	help
+	  ignore the guarantee bit[31] of dTurboWriteBufferLifeTimeEst for PoC
+
+config UFSTW_BOOT_ENABLED
+	bool "Turbo Write enabled at boot time"
+	default y
+	depends on SCSI_UFSHCD && UFSFEATURE && UFSTW
+	help
+	  fTurboWriteEn and fTurboWriteBufferFlushDuringHibnerEnter flags
+	  are enabled at boot time.
+
+config UFSTW_RESTORE_WB
+	bool "Restore Write Booster for unsupported TW version"
+	default y
+	depends on SCSI_UFSHCD && UFSFEATURE && UFSTW
+	help
+	  Restoring Write Booster when TW initialization is failed.
 
 config UFSHID
 	bool "UFS Host Initiated Defrag support"
@@ -186,3 +220,16 @@ config UFSHID_POC
 	  2. auto_hibern8 enable/disable (HCI)
 	  3. set flag bDefragOperation
 	  4. debug msg enable (default : disable)
+config UFSRINGBUF
+	bool "UFS RingBuffer support"
+	depends on SCSI_UFSHCD && UFSFEATURE
+	help
+	  UFS RingBuffer Feature Enable
+
+config UFSRINGBUF_POC
+	bool "UFS RingBuffer POC test"
+	depends on SCSI_UFSHCD && UFSFEATURE && UFSRINGBUF
+	help
+	  UFS RingBuffer POC test
+	  1. set default vendor_signature & vendor_parameter for test
+	  2. Set custom vender_parameter

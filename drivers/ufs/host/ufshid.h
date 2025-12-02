@@ -50,8 +50,8 @@
 
 #include "../../../block/blk.h"
 
-#define UFSHID_VER					0x0305
-#define UFSHID_DD_VER					0x031101
+#define UFSHID_VER					0x0303
+#define UFSHID_DD_VER					0x030C00
 #define UFSHID_DD_VER_POST				""
 
 #define UFS_FEATURE_SUPPORT_HID_BIT			(1 << 0)

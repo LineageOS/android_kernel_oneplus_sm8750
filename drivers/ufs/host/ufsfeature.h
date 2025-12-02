@@ -44,7 +44,9 @@
 
 #include <ufs/ufs.h>
 
+#include "ufstw.h"
 #include "ufshid.h"
+#include "ufsringbuf.h"
 
 #define UFS_UPIU_MAX_GENERAL_LUN		8
 
@@ -59,8 +61,12 @@ enum {
 #define UFSFEATURE_QUERY_OPCODE			0x5500
 
 /* Version info */
-#define UFSFEATURE_DD_VER			0x030600
+#define UFSFEATURE_DD_VER			0x020500
 #define UFSFEATURE_DD_VER_POST			""
+
+/* For read10 debug */
+#define READ10_DEBUG_LUN			0x7F
+#define READ10_DEBUG_LBA			0x48504230
 
 /* For Chip Crack Detection */
 #define VENDOR_OP                               0xC0
@@ -70,18 +76,16 @@ enum {
 #define CCD_DESC_TYPE                           0x81
 
 /* Description */
-#define UFSF_QUERY_DESC_DEVICE_MAX_SIZE		0xFF
+#define UFSF_QUERY_DESC_DEVICE_MAX_SIZE		0x65
 #define UFSF_QUERY_DESC_CONFIGURAION_MAX_SIZE	0xE6
 #define UFSF_QUERY_DESC_UNIT_MAX_SIZE		0x2D
-#define UFSF_QUERY_DESC_GEOMETRY_MAX_SIZE	0xFF
-#define UFSF_QUERY_DESC_FBO_MAX_SIZE		0x12
+#define UFSF_QUERY_DESC_GEOMETRY_MAX_SIZE	0x5E
 #define UFSF_QUERY_DESC_COPY_MAX_SIZE		0x0E
 
 /* Descriptor idn for Query Request */
-#define UFSF_QUERY_DESC_IDN_VENDOR_DEVICE	0xF0
-#define UFSF_QUERY_DESC_IDN_VENDOR_GEOMETRY	0xF7
-#define UFSF_QUERY_DESC_IDN_FBO			0x0A
 #define UFSF_QUERY_DESC_IDN_COPY		0x0B
+
+#define UFSFEATURE_SELECTOR			0x01
 
 /* query_flag  */
 #define MASK_QUERY_UPIU_FLAG_LOC		0xFF
@@ -109,6 +113,10 @@ struct ufsf_lu_desc {
 	int lu_queue_depth;	/* 06h lu queue depth info*/
 	int lu_logblk_size;	/* 0Ah bLogicalBlockSize. default 0x0C = 4KB */
 	u64 lu_logblk_cnt;	/* 0Bh qLogicalBlockCount. */
+
+#if defined(CONFIG_UFSTW)
+	unsigned int tw_lu_buf_size;
+#endif
 };
 
 struct ufsf_feature {
@@ -120,9 +128,18 @@ struct ufsf_feature {
 	struct work_struct reset_wait_work;
 	struct work_struct resume_work;
 
+#if defined(CONFIG_UFSTW)
+	struct ufstw_dev_info tw_dev_info;
+	struct ufstw_lu *tw_lup[UFS_UPIU_MAX_GENERAL_LUN];
+	atomic_t tw_state;
+#endif
 #if defined(CONFIG_UFSHID)
 	atomic_t hid_state;
 	struct ufshid_dev *hid_dev;
+#endif
+#if defined(CONFIG_UFSRINGBUF)
+	atomic_t ringbuf_state;
+	struct ufsringbuf_dev *ringbuf_dev;
 #endif
 };
 
@@ -145,19 +162,49 @@ void ufsf_resume(struct ufsf_feature *ufsf, bool is_link_off);
 void ufsf_print_buf(const unsigned char *field, int size);
 
 /* mimic */
+int ufsf_issue_tm_cmd(struct ufs_hba *hba, int lun_id, int task_id,
+		      u8 tm_function, u8 *tm_response);
 void ufsf_scsi_unblock_requests(struct ufs_hba *hba);
 void ufsf_scsi_block_requests(struct ufs_hba *hba);
 int ufsf_wait_for_doorbell_clr(struct ufs_hba *hba, u64 wait_timeout_us);
 void ufsf_rpm_put_noidle(struct ufs_hba *hba);
+int ufsf_get_bkops_status(struct ufs_hba *hba, u32 *status);
+void ufsf_exception_event_handler(struct ufs_hba *hba);
+int ufsf_query_flag_retry(struct ufs_hba *hba, enum query_opcode opcode,
+			  enum flag_idn idn, u8 index, u8 selector,
+			  bool *flag_res);
+
 
 /* Device descriptor parameters offsets in bytes*/
 #define DEVICE_DESC_PARAM_EX_FEAT_SUP			0x4F
-#define DEVICE_DESC_PARAM_SAMSUNG_SUP			0xFB
 
-#if defined(CONFIG_UFSHID)
+/* Flag idn for Query Requests*/
+#if defined(CONFIG_UFSTW)
+#define QUERY_FLAG_IDN_TW_EN				0x0E
+#define QUERY_FLAG_IDN_TW_BUF_FLUSH_EN			0x0F
+#define QUERY_FLAG_IDN_TW_FLUSH_DURING_HIBERN		0x10
+#define QUERY_FLAG_IDN_TW_BUF_FULL_COUNT_INIT		0x82
+#endif
+#if defined(CONFIG_UFSRINGBUF)
+#define QUERY_FLAG_IDN_CMD_HISTORY_RECORD_EN		0x80
+#endif
+
 /* Attribute idn for Query requests */
-#define QUERY_ATTR_IDN_HID_OPERATION			0x80
-#define QUERY_ATTR_IDN_HID_FRAG_LEVEL			0x81
+#if defined(CONFIG_UFSTW)
+#define QUERY_ATTR_IDN_TW_FLUSH_STATUS			0x1C
+#define QUERY_ATTR_IDN_TW_AVAIL_BUF_SIZE		0x1D
+#define QUERY_ATTR_IDN_TW_BUF_LIFETIME_EST		0x1E
+#define QUERY_ATTR_IDN_TW_CURR_BUF_SIZE			0x1F
+#define QUERY_ATTR_IDN_MAX_NO_FLUSH_TW_BUF_ALLOC_UNITS	0x84
+#define QUERY_ATTR_IDN_TW_BUF_RESIZE			0x85
+#define QUERY_ATTR_IDN_TW_BUF_RESIZE_STATUS		0x86
+#define QUERY_ATTR_IDN_RESIZED_TW_BUF_ALLOC_UNITS	0x87
+#define QUERY_ATTR_IDN_TW_BUF_FULL_COUNT		0x88
+#define QUERY_ATTR_IDN_TW_BUF_RESIZE_NOT_AVAIL		0x89
+#endif
+#if defined(CONFIG_UFSHID)
+#define QUERY_ATTR_IDN_HID_OPERATION			0x20
+#define QUERY_ATTR_IDN_HID_FRAG_LEVEL			0x21
 #define QUERY_ATTR_IDN_HID_SIZE				0x8A
 #define QUERY_ATTR_IDN_HID_AVAIL_SIZE			0x8B
 #define QUERY_ATTR_IDN_HID_PROGRESS_RATIO		0x8C
@@ -165,11 +212,71 @@ void ufsf_rpm_put_noidle(struct ufs_hba *hba);
 #define QUERY_ATTR_IDN_HID_L2P_FRAG_LEVEL		0x8E
 #define QUERY_ATTR_IDN_HID_L2P_DEFRAG_THRESHOLD		0x8F
 #define QUERY_ATTR_IDN_HID_FEAT_SUP			0x90
-
-#define DEVICE_DESC_PARAM_HID_VER			0xF7
-
-#define GEOMETRY_DESC_HID_MAX_LBA_RANGE_CNT		0xF8
-#define GEOMETRY_DESC_HID_MAX_LBA_RANGE_SIZE		0xF9
 #endif
+#if defined (CONFIG_UFSRINGBUF)
+#define QUERY_ATTR_IDN_RINGBUF_RTCA			0x82
+#define QUERY_ATTR_IDN_RINGBUF_RTCB			0x83
+#endif
+#define QUERY_ATTR_IDN_VENDOR_EE_CONTROL		0x97
+#define QUERY_ATTR_IDN_VENDOR_EE_STATUS			0x98
+/* Unit descriptor parameters offsets in bytes*/
+#if defined(CONFIG_UFSTW)
+#define UNIT_DESC_TW_LU_WRITE_BUFFER_ALLOC_UNIT		0x29
+#endif
+
+/* Device descriptor parameters offsets in bytes*/
+#if defined(CONFIG_UFSTW)
+#define DEVICE_DESC_PARAM_TW_VER			0x4D
+#define DEVICE_DESC_PARAM_TW_RETURN_TO_USER		0x53
+#define DEVICE_DESC_PARAM_TW_BUF_TYPE			0x54
+#define DEVICE_DESC_PARAM_TW_SHARED_BUF_ALLOC_UNITS	0x55
+#endif
+#if defined(CONFIG_UFSHID)
+#define DEVICE_DESC_PARAM_HID_VER			0x59
+#endif
+#if defined(CONFIG_UFSRINGBUF)
+#define DEVICE_DESC_PARAM_RING_BUF_VER			0xF5
+#endif
+
+/* Geometry descriptor parameters offsets in bytes*/
+#if defined(CONFIG_UFSTW)
+#define GEOMETRY_DESC_TW_GROUP_NUM_CAP			0xF7
+#define GEOMETRY_DESC_TW_MAX_SIZE			0x4F
+#define GEOMETRY_DESC_TW_NUMBER_LU			0x53
+#define GEOMETRY_DESC_TW_CAP_ADJ_FAC			0x54
+#define GEOMETRY_DESC_TW_SUPPORT_USER_REDUCTION_TYPES	0x55
+#define GEOMETRY_DESC_TW_SUPPORT_BUF_TYPE		0x56
+#define GEOMETRY_DESC_TW_EXTENDED_SUPPORT		0xF3
+#endif
+#if defined(CONFIG_UFSHID)
+#define GEOMETRY_DESC_HID_MAX_LBA_RANGE_CNT		0x59
+#define GEOMETRY_DESC_HID_MAX_LBA_RANGE_SIZE		0x5D
+#endif
+#if defined(CONFIG_UFSRINGBUF)
+#define GEOMETRY_DESC_RINGBUF_MAX_HIST_BUFSIZE		0xFD
+#endif
+
+/* Exception event mask values */
+#if defined(CONFIG_UFSTW)
+enum {
+	MASK_EE_TW		= (1 << 5),
+};
+#endif
+
+/**
+ * struct utp_upiu_task_req - Task request UPIU structure
+ * @header - UPIU header structure DW0 to DW-2
+ * @input_param1: Input parameter 1 DW-3
+ * @input_param2: Input parameter 2 DW-4
+ * @input_param3: Input parameter 3 DW-5
+ * @reserved: Reserved double words DW-6 to DW-7
+ */
+struct utp_upiu_task_req {
+	struct utp_upiu_header header;
+	__be32 input_param1;
+	__be32 input_param2;
+	__be32 input_param3;
+	__be32 reserved[2];
+};
 
 #endif /* End of Header */

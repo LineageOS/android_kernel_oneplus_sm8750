@@ -78,7 +78,7 @@ static int ufshid_read_attr(struct ufshid_dev *hid, u8 idn, u32 *attr_val)
 	ufshcd_rpm_get_sync(hba);
 
 	ret = ufshcd_query_attr_retry(hba, UPIU_QUERY_OPCODE_READ_ATTR, idn, 0,
-				      0, attr_val);
+				      UFSFEATURE_SELECTOR, attr_val);
 	if (ret) {
 		ERR_MSG("read attr [0x%.2X] fail. (%d)", idn, ret);
 		goto err_out;
@@ -100,7 +100,7 @@ static int ufshid_write_attr(struct ufshid_dev *hid, u8 idn, u32 val)
 	ufshcd_rpm_get_sync(hba);
 
 	ret = ufshcd_query_attr_retry(hba, UPIU_QUERY_OPCODE_WRITE_ATTR, idn, 0,
-				      0, &val);
+				      UFSFEATURE_SELECTOR, &val);
 	if (ret) {
 		ERR_MSG("write attr [0x%.2X] fail. (%d)", idn, ret);
 		goto err_out;
@@ -148,7 +148,7 @@ void ufshid_get_dev_info(struct ufsf_feature *ufsf, u8 *desc_buf)
 
 	ufsf->hid_dev = NULL;
 
-	if (!(get_unaligned_be32(desc_buf + DEVICE_DESC_PARAM_SAMSUNG_SUP) &
+	if (!(get_unaligned_be32(desc_buf + DEVICE_DESC_PARAM_EX_FEAT_SUP) &
 	      UFS_FEATURE_SUPPORT_HID_BIT)) {
 		INFO_MSG("bUFSExFeaturesSupport: HID not support");
 		goto err_out;
@@ -904,7 +904,7 @@ static void ufshid_restore_attr(struct ufshid_dev *hid)
 
 	pm_runtime_get(&hba->ufs_device_wlun->sdev_gendev);
 	ret = ufshcd_query_attr_retry(hba, UPIU_QUERY_OPCODE_WRITE_ATTR, idn, 0,
-				      0, &attr_val);
+				      UFSFEATURE_SELECTOR, &attr_val);
 	ufsf_rpm_put_noidle(hba);
 
 	if (!ret)

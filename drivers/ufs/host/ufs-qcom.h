@@ -259,6 +259,12 @@ enum ufs_qcom_phy_init_type {
  */
 #define UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING (1 << 17)
 
+/*
+ * Samsung QLC ufs device needs a different set of drivers for HID and TW.
+ * Enable this quirk to config QLC HID & TW on.
+ */
+#define UFS_DEVICE_QUIRK_SAMSUNG_QLC             (1 << 18)
+
 static inline void
 ufs_qcom_get_controller_revision(struct ufs_hba *hba,
 				 u8 *major, u16 *minor, u16 *step)
