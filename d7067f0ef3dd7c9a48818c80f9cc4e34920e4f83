@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "dca3f7e0_41c33a19",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 13648
+      },
+      "writtenOn": "2025-12-06T15:46:13Z",
+      "side": 1,
+      "message": "Also merged KERNEL.PLATFORM.4.0.r1-15300-kernel.0.",
+      "revId": "d7067f0ef3dd7c9a48818c80f9cc4e34920e4f83",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
