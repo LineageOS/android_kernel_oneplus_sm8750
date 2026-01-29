@@ -16,6 +16,24 @@
       "message": "Why here?",
       "revId": "92e302246c4109014964070d248513a94257a60e",
       "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    },
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "406a6937_81dbbec4",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 30975
+      },
+      "writtenOn": "2026-01-29T03:31:16Z",
+      "side": 1,
+      "message": "Bcuz OnePlus ship in main kernel.",
+      "parentUuid": "ff565cd7_84bcb801",
+      "revId": "92e302246c4109014964070d248513a94257a60e",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
     }
   ]
 }
