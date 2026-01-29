@@ -249,8 +249,8 @@ int ufsf_query_flag_retry(struct ufs_hba *hba, enum query_opcode opcode,
 #define GEOMETRY_DESC_TW_EXTENDED_SUPPORT		0xF3
 #endif
 #if defined(CONFIG_UFSHID)
-#define GEOMETRY_DESC_HID_MAX_LBA_RANGE_CNT		0x59
-#define GEOMETRY_DESC_HID_MAX_LBA_RANGE_SIZE		0x5D
+#define GEOMETRY_DESC_HID_MAX_LBA_RANGE_SIZE		0x59
+#define GEOMETRY_DESC_HID_MAX_LBA_RANGE_CNT		0x5D
 #endif
 #if defined(CONFIG_UFSRINGBUF)
 #define GEOMETRY_DESC_RINGBUF_MAX_HIST_BUFSIZE		0xFD
