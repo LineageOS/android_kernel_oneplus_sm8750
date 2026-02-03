@@ -140,6 +140,16 @@ enum blkzone_allocation_policy {
 	BLKZONE_ALLOC_PRIOR_CONV,	/* Prioritize writing to conventional zones */
 };
 
+enum f2fs_lock_name {
+	LOCK_NAME_NONE,
+	LOCK_NAME_CP_RWSEM,
+	LOCK_NAME_NODE_CHANGE,
+	LOCK_NAME_NODE_WRITE,
+	LOCK_NAME_GC_LOCK,
+	LOCK_NAME_CP_GLOBAL,
+	LOCK_NAME_IO_RWSEM,
+};
+
 /*
  * An implementation of an rwsem that is explicitly unfair to readers. This
  * prevents priority inversion when a low-priority reader acquires the read lock
@@ -148,6 +158,8 @@ enum blkzone_allocation_policy {
  */
 
 struct f2fs_rwsem {
+	struct f2fs_sb_info *sbi;
+	enum f2fs_lock_name name;
         struct rw_semaphore internal_rwsem;
 #ifdef CONFIG_F2FS_UNFAIR_RWSEM
         wait_queue_head_t read_waiters;
@@ -252,7 +264,7 @@ enum {
 #define DEF_CP_INTERVAL			60	/* 60 secs */
 #define DEF_IDLE_INTERVAL		5	/* 5 secs */
 #define DEF_DISABLE_INTERVAL		5	/* 5 secs */
-#define DEF_ENABLE_INTERVAL		5	/* 5 secs */
+#define DEF_ENABLE_INTERVAL		16	/* 16 secs */
 #define DEF_DISABLE_QUICK_INTERVAL	1	/* 1 secs */
 #define DEF_UMOUNT_DISCARD_TIMEOUT	5	/* 5 secs */
 
@@ -648,6 +660,12 @@ enum extent_type {
 	NR_EXTENT_CACHES,
 };
 
+/*
+ * Reserved value to mark invalid age extents, hence valid block range
+ * from 0 to ULLONG_MAX-1
+ */
+#define F2FS_EXTENT_AGE_INVALID	ULLONG_MAX
+
 struct extent_info {
 	unsigned int fofs;		/* start offset in a file */
 	unsigned int len;		/* length of the extent */
@@ -887,6 +905,7 @@ struct f2fs_inode_info {
 	unsigned char i_compress_level;		/* compress level (lz4hc,zstd) */
 	unsigned char i_compress_flag;		/* compress flag */
 	unsigned int i_cluster_size;		/* cluster size */
+	atomic_t writeback;			/* count # of writeback thread */
 
 	unsigned int atomic_write_cnt;
 	loff_t original_i_size;		/* original i_size before atomic write */
@@ -1308,6 +1327,24 @@ struct atgc_management {
 	unsigned long long age_threshold;	/* age threshold */
 };
 
+struct f2fs_time_stat {
+	unsigned long long total_time;		/* total wall clock time */
+#ifdef CONFIG_64BIT
+	unsigned long long running_time;	/* running time */
+#endif
+#if defined(CONFIG_SCHED_INFO) && defined(CONFIG_SCHEDSTATS)
+	unsigned long long runnable_time;	/* runnable(including preempted) time */
+#endif
+#ifdef CONFIG_TASK_DELAY_ACCT
+	unsigned long long io_sleep_time;	/* IO sleep time */
+#endif
+};
+
+struct f2fs_lock_context {
+	struct f2fs_time_stat ts;
+	bool lock_trace;
+};
+
 struct f2fs_gc_control {
 	unsigned int victim_segno;	/* target victim segment number */
 	int init_gc_type;		/* FG_GC or BG_GC */
@@ -1316,6 +1353,7 @@ struct f2fs_gc_control {
 	bool err_gc_skipped;		/* return EAGAIN if GC skipped */
 	bool one_time;			/* require one time GC in one migration unit */
 	unsigned int nr_free_secs;	/* # of free sections to do GC */
+	struct f2fs_lock_context lc;	/* lock context for gc_lock */
 };
 
 /*
@@ -1427,6 +1465,9 @@ enum {
 	MAX_CALL_TYPE,
 	TOTAL_CALL = FOREGROUND,
 };
+
+/* a threshold of maximum elapsed time in critical region to print tracepoint */
+#define MAX_LOCK_ELAPSED_TIME		500
 
 static inline int f2fs_test_bit(unsigned int nr, char *addr);
 static inline void f2fs_set_bit(unsigned int nr, char *addr);
@@ -1617,7 +1658,6 @@ struct f2fs_sb_info {
 	unsigned long last_time[MAX_TIME];	/* to store time in jiffies */
 	long interval_time[MAX_TIME];		/* to store thresholds */
 	struct ckpt_req_control cprc_info;	/* for checkpoint request control */
-	struct f2fs_rwsem cp_enable_rwsem;	/* block cache/dio write */
 
 	struct inode_management im[MAX_INO_ENTRY];	/* manage inode cache */
 
@@ -1808,9 +1848,6 @@ struct f2fs_sb_info {
 	spinlock_t error_lock;			/* protect errors/stop_reason array */
 	bool error_dirty;			/* errors of sb is dirty */
 
-	struct kmem_cache *inline_xattr_slab;	/* inline xattr entry */
-	unsigned int inline_xattr_slab_size;	/* default inline xattr slab size */
-
 	/* For reclaimed segs statistics per each GC mode */
 	unsigned int gc_segment_mode;		/* GC state for reclaimed segments */
 	unsigned int gc_reclaimed_segs[MAX_GC_MODE];	/* Reclaimed segs for each mode */
@@ -1828,6 +1865,9 @@ struct f2fs_sb_info {
 
 	/* carve out reserved_blocks from total blocks */
 	bool carve_out;
+
+	/* max elapsed time threshold in critical region that lock covered */
+	unsigned long long max_lock_elapsed_time;
 
 #ifdef CONFIG_F2FS_FS_COMPRESSION
 	struct kmem_cache *page_array_slab;	/* page array entry */
@@ -2184,16 +2224,22 @@ static inline void clear_ckpt_flags(struct f2fs_sb_info *sbi, unsigned int f)
 	spin_unlock_irqrestore(&sbi->cp_lock, flags);
 }
 
-#define init_f2fs_rwsem(sem)					\
+#define init_f2fs_rwsem(sem)	__init_f2fs_rwsem(sem, NULL, LOCK_NAME_NONE)
+#define init_f2fs_rwsem_trace	__init_f2fs_rwsem
+
+#define __init_f2fs_rwsem(sem, sbi, name)			\
 do {								\
 	static struct lock_class_key __key;			\
 								\
-	__init_f2fs_rwsem((sem), #sem, &__key);			\
+	do_init_f2fs_rwsem((sem), #sem, &__key, sbi, name);	\
 } while (0)
 
-static inline void __init_f2fs_rwsem(struct f2fs_rwsem *sem,
-		const char *sem_name, struct lock_class_key *key)
+static inline void do_init_f2fs_rwsem(struct f2fs_rwsem *sem,
+		const char *sem_name, struct lock_class_key *key,
+		struct f2fs_sb_info *sbi, enum f2fs_lock_name name)
 {
+	sem->sbi = sbi;
+	sem->name = name;
 	__init_rwsem(&sem->internal_rwsem, sem_name, key);
 #ifdef CONFIG_F2FS_UNFAIR_RWSEM
 	init_waitqueue_head(&sem->read_waiters);
@@ -2269,6 +2315,16 @@ static inline void f2fs_up_write(struct f2fs_rwsem *sem)
 #endif
 }
 
+void f2fs_down_read_trace(struct f2fs_rwsem *sem, struct f2fs_lock_context *lc);
+int f2fs_down_read_trylock_trace(struct f2fs_rwsem *sem,
+						struct f2fs_lock_context *lc);
+void f2fs_up_read_trace(struct f2fs_rwsem *sem, struct f2fs_lock_context *lc);
+void f2fs_down_write_trace(struct f2fs_rwsem *sem,
+						struct f2fs_lock_context *lc);
+int f2fs_down_write_trylock_trace(struct f2fs_rwsem *sem,
+						struct f2fs_lock_context *lc);
+void f2fs_up_write_trace(struct f2fs_rwsem *sem, struct f2fs_lock_context *lc);
+
 static inline void disable_nat_bits(struct f2fs_sb_info *sbi, bool lock)
 {
 	unsigned long flags;
@@ -2297,33 +2353,6 @@ static inline bool enabled_nat_bits(struct f2fs_sb_info *sbi,
 	bool set = is_set_ckpt_flags(sbi, CP_NAT_BITS_FLAG);
 
 	return (cpc) ? (cpc->reason & CP_UMOUNT) && set : set;
-}
-
-static inline void f2fs_lock_op(struct f2fs_sb_info *sbi)
-{
-	f2fs_down_read(&sbi->cp_rwsem);
-}
-
-static inline int f2fs_trylock_op(struct f2fs_sb_info *sbi)
-{
-	if (time_to_inject(sbi, FAULT_LOCK_OP))
-		return 0;
-	return f2fs_down_read_trylock(&sbi->cp_rwsem);
-}
-
-static inline void f2fs_unlock_op(struct f2fs_sb_info *sbi)
-{
-	f2fs_up_read(&sbi->cp_rwsem);
-}
-
-static inline void f2fs_lock_all(struct f2fs_sb_info *sbi)
-{
-	f2fs_down_write(&sbi->cp_rwsem);
-}
-
-static inline void f2fs_unlock_all(struct f2fs_sb_info *sbi)
-{
-	f2fs_up_write(&sbi->cp_rwsem);
 }
 
 static inline int __get_cp_reason(struct f2fs_sb_info *sbi)
@@ -3627,7 +3656,7 @@ void f2fs_update_inode_page(struct inode *inode);
 int f2fs_write_inode(struct inode *inode, struct writeback_control *wbc);
 void f2fs_remove_donate_inode(struct inode *inode);
 void f2fs_evict_inode(struct inode *inode);
-void f2fs_handle_failed_inode(struct inode *inode);
+void f2fs_handle_failed_inode(struct inode *inode, struct f2fs_lock_context *lc);
 
 /*
  * namei.c
@@ -3709,7 +3738,6 @@ void f2fs_quota_off_umount(struct super_block *sb);
 void f2fs_save_errors(struct f2fs_sb_info *sbi, unsigned char flag);
 void f2fs_handle_critical_error(struct f2fs_sb_info *sbi, unsigned char reason);
 void f2fs_handle_error(struct f2fs_sb_info *sbi, unsigned char error);
-void f2fs_handle_error_async(struct f2fs_sb_info *sbi, unsigned char error);
 int f2fs_commit_super(struct f2fs_sb_info *sbi, bool recover);
 int f2fs_sync_fs(struct super_block *sb, int sync);
 int f2fs_sanity_check_ckpt(struct f2fs_sb_info *sbi);
@@ -3872,6 +3900,9 @@ static inline bool f2fs_need_rand_seg(struct f2fs_sb_info *sbi)
 /*
  * checkpoint.c
  */
+void f2fs_lock_op(struct f2fs_sb_info *sbi, struct f2fs_lock_context *lc);
+int f2fs_trylock_op(struct f2fs_sb_info *sbi, struct f2fs_lock_context *lc);
+void f2fs_unlock_op(struct f2fs_sb_info *sbi, struct f2fs_lock_context *lc);
 void f2fs_stop_checkpoint(struct f2fs_sb_info *sbi, bool end_io,
 							unsigned char reason);
 void f2fs_flush_ckpt_thread(struct f2fs_sb_info *sbi);
@@ -4569,7 +4600,7 @@ static inline bool f2fs_disable_compressed_file(struct inode *inode)
 		f2fs_up_write(&fi->i_sem);
 		return true;
 	}
-	if (f2fs_is_mmap_file(inode) ||
+	if (f2fs_is_mmap_file(inode) || atomic_read(&fi->writeback) ||
 		(S_ISREG(inode->i_mode) && F2FS_HAS_BLOCKS(inode))) {
 		f2fs_up_write(&fi->i_sem);
 		return false;
