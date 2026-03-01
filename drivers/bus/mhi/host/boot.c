@@ -527,7 +527,7 @@ skip_req_fw:
 		MHI_LOG(dev, "tme_supported_image:%s\n",
 				(mhi_cntrl->tme_supported_image ? "True" : "False"));
 		if (mhi_cntrl->tme_supported_image) {
-			fw_data = firmware->data + mhi_cntrl->sbl_size;
+			fw_data = fw_data + mhi_cntrl->sbl_size;
 			fw_sz = fw_sz - mhi_cntrl->sbl_size;
 		}
 

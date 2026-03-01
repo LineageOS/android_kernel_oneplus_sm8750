@@ -2006,6 +2006,7 @@ static int arm_smmu_setup_default_domain(struct device *dev,
 
 	if (!strcmp(str, "bypass")) {
 		smmu_domain->mapping_cfg.s1_bypass = 1;
+		smmu_domain->mapping_cfg.atomic = 1;
 	} else if (!strcmp(str, "fastmap")) {
 		/*
 		 * Fallback to the upstream dma-allocator if fastmap is not enabled.

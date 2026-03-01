@@ -28,6 +28,10 @@
 #include <linux/nvmem-consumer.h>
 #include <linux/ipc_logging.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+#include <linux/crypto-qti-common.h>
+#include <linux/of_platform.h>
+#endif
 
 #include <soc/qcom/ice.h>
 
@@ -5070,6 +5074,30 @@ static int sdhci_msm_setup_pwr_irq(struct sdhci_msm_host *msm_host)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+static int sdhci_crypto_probe_check(struct device *dev)
+{
+	struct platform_device *dep_pdev;
+	struct device_node *dep_dev;
+
+	dep_dev = of_parse_phandle(dev->of_node, "sdhc-msm-crypto", 0);
+	if (dep_dev) {
+		dep_pdev = of_find_device_by_node(dep_dev);
+		if (!dep_pdev || !dep_pdev->dev.driver) {
+			of_node_put(dep_dev);
+			dev_warn(dev, "Failed to create sdcc-ice data structures\n");
+			if (dep_pdev)
+				platform_device_put(dep_pdev);
+			return -EPROBE_DEFER;
+		}
+		platform_device_put(dep_pdev);
+		of_node_put(dep_dev);
+		dev_dbg(dev, "sdcc-ice probe successfully\n");
+	}
+	return 0;
+}
+#endif
+
 static int sdhci_msm_probe(struct platform_device *pdev)
 {
 	struct sdhci_host *host;
@@ -5086,6 +5114,11 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		dev_err(dev, "SDHCI is not boot dev.\n");
 		return 0;
 	}
+
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+	if (sdhci_crypto_probe_check(dev))
+		return -EPROBE_DEFER;
+#endif
 
 	host = sdhci_pltfm_init(pdev, &sdhci_msm_pdata, sizeof(*msm_host));
 	if (IS_ERR(host))
