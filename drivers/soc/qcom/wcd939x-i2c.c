@@ -2020,8 +2020,8 @@ static const struct i2c_device_id wcd_usbss_id_i2c[] = {
 MODULE_DEVICE_TABLE(i2c, wcd_usbss_id_i2c);
 
 static const struct dev_pm_ops wcd_usbss_pm_ops = {
-	.suspend_late = wcd_usbss_pm_suspend,
-	.resume_early = wcd_usbss_pm_resume,
+	.suspend = wcd_usbss_pm_suspend,
+	.resume = wcd_usbss_pm_resume,
 };
 
 static struct i2c_driver wcd_usbss_i2c_driver = {

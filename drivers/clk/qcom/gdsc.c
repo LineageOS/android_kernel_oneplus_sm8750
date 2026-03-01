@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015, 2017-2018, 2022, The Linux Foundation. All rights reserved.
- * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/bitops.h>
@@ -510,7 +510,7 @@ static void gdsc_pm_subdomain_remove(struct gdsc_desc *desc, size_t num)
 int gdsc_register(struct gdsc_desc *desc,
 		  struct reset_controller_dev *rcdev, struct regmap *regmap)
 {
-	int i, ret;
+	int i, ret = 0;
 	struct genpd_onecell_data *data;
 	struct device *dev = desc->dev;
 	struct gdsc **scs = desc->scs;
