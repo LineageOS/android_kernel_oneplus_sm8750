@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": false,
+      "key": {
+        "uuid": "2a7a9ff4_70e45036",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 3
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 13648
+      },
+      "writtenOn": "2026-03-07T10:00:07Z",
+      "side": 1,
+      "message": "It now includes also ASB kernel tag merge.",
+      "revId": "4bde5abff3fbc71a1d77e5848e628670fa336ced",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
