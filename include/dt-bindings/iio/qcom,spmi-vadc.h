@@ -1,7 +1,7 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
 /*
  * Copyright (c) 2012-2014,2018-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _DT_BINDINGS_QCOM_SPMI_VADC_H
@@ -492,5 +492,6 @@
 #define ADC_SCALE_HW_CALIB_PM5_GEN3_USB_IN_I		25
 #define ADC_SCALE_HW_CALIB_PM5_GEN4_BATT_THERM_10K	26
 #define ADC_SCALE_HW_CALIB_PM5_GEN4_BATT_ID_10K		27
+#define ADC_SCALE_HW_CALIB_PM5_GEN3_PMIC_THERM_LITE	28
 
 #endif /* _DT_BINDINGS_QCOM_SPMI_VADC_H */

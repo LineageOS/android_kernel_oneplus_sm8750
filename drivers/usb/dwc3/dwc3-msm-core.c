@@ -4442,11 +4442,6 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 	/* enable power evt irq for IN P3 detection */
 	enable_irq(mdwc->wakeup_irq[PWR_EVNT_IRQ].irq);
 
-	/* Disable HSPHY auto suspend */
-	dwc3_msm_write_reg(mdwc->base, DWC3_GUSB2PHYCFG(0),
-		dwc3_msm_read_reg(mdwc->base, DWC3_GUSB2PHYCFG(0)) &
-				~DWC3_GUSB2PHYCFG_SUSPHY);
-
 	/* Disable wakeup capable for HS_PHY IRQ & SS_PHY_IRQ if enabled */
 	dwc3_msm_interrupt_enable(mdwc, false);
 	dev_info(mdwc->dev, "DWC3 exited from low power mode\n");
@@ -7241,6 +7236,15 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 		mdwc->force_disconnect = false;
 	} else {
 		dev_dbg(mdwc->dev, "%s: turn off gadget\n", __func__);
+		/*
+		 * Clear the susphy before updateing the vbus valid.
+		 * This is necessary as the susphy interferes with the vbus update
+		 * resulting in late interrupt generation.
+		 */
+		dwc3_msm_write_reg_field(mdwc->base, DWC3_GUSB3PIPECTL(0),
+					DWC3_GUSB3PIPECTL_SUSPHY, 0);
+		dwc3_msm_write_reg_field(mdwc->base, DWC3_GUSB2PHYCFG(0),
+					DWC3_GUSB2PHYCFG_SUSPHY, 0);
 
 		dwc3_override_vbus_status(mdwc, false);
 		mdwc->in_device_mode = false;
@@ -7250,9 +7254,6 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 		usb_redriver_notify_disconnect(mdwc->redriver);
 
 		dwc3_msm_notify_event(dwc, DWC3_GSI_EVT_BUF_CLEAR, 0);
-		dwc3_override_vbus_status(mdwc, false);
-		dwc3_msm_write_reg_field(mdwc->base, DWC3_GUSB3PIPECTL(0),
-				DWC3_GUSB3PIPECTL_SUSPHY, 0);
 
 		/*
 		 * DWC3 core runtime PM may return an error during the put sync

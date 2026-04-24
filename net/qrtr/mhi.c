@@ -21,7 +21,6 @@ struct qrtr_mhi_dev {
 	struct device *dev;
 	struct completion prepared;
 	struct completion ringfull;
-	bool abort_tx;
 };
 
 /* From MHI to QRTR */
@@ -93,10 +92,6 @@ static int qcom_mhi_qrtr_send(struct qrtr_endpoint *ep, struct sk_buff *skb)
 
 	do {
 		reinit_completion(&qdev->ringfull);
-
-		if (qdev->abort_tx)
-			return -EIO;
-
 		rc = __qcom_mhi_qrtr_send(ep, skb);
 		if (rc == -EAGAIN)
 			wait_for_completion(&qdev->ringfull);
@@ -175,9 +170,6 @@ static int qcom_mhi_qrtr_probe(struct mhi_device *mhi_dev,
 static void qcom_mhi_qrtr_remove(struct mhi_device *mhi_dev)
 {
 	struct qrtr_mhi_dev *qdev = dev_get_drvdata(&mhi_dev->dev);
-
-	qdev->abort_tx = true;
-	complete_all(&qdev->ringfull);
 
 	qrtr_endpoint_unregister(&qdev->ep);
 	mhi_unprepare_from_transfer(mhi_dev);
