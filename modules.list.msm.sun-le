@@ -56,6 +56,7 @@ camcc-sun.ko
 evacc-sun.ko
 stub-regulator.ko
 tcsrcc-sun.ko
+debugcc-sun.ko
 sg.ko
 gdsc-regulator.ko
 cqhci.ko
