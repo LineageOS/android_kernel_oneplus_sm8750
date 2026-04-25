@@ -2843,7 +2843,7 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 		break;
 	case POST_CHANGE:
 		if (!on) {
-			if (ufs_qcom_is_link_hibern8(hba)) {
+			if ((ufs_qcom_is_link_hibern8(hba)) || (ufs_qcom_is_link_off(hba))) {
 				ufs_qcom_phy_set_src_clk_h8_enter(phy);
 				/*
 				 * As XO is set to the source of lane clocks, hence
@@ -5388,8 +5388,28 @@ static struct ufs_dev_quirk ufs_qcom_dev_fixups[] = {
 	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
 	  .model = UFS_ANY_MODEL,
 	  .quirk = UFS_DEVICE_QUIRK_PA_HIBER8TIME |
-			UFS_DEVICE_QUIRK_PA_TX_HSG1_SYNC_LENGTH |
-			UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING },
+			UFS_DEVICE_QUIRK_PA_TX_HSG1_SYNC_LENGTH },
+	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
+	  .model = "KLUEG4RHHD-B0G1",
+	  .quirk = UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING },
+	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
+	  .model = "KLUFG8RHHD-B0G1",
+	  .quirk = UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING },
+	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
+	  .model = "KLUGGARHHD-B0G1",
+	  .quirk = UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING },
+	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
+	  .model = "KLUEG4RHHF-F0G1",
+	  .quirk = UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING },
+	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
+	  .model = "KLUFG8RHHF-F0G1",
+	  .quirk = UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING },
+	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
+	  .model = "KLUFG4NHHB-F0G1",
+	  .quirk = UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING },
+	{ .wmanufacturerid = UFS_VENDOR_SAMSUNG,
+	  .model = "KLUGG8NHHB-F0G1",
+	  .quirk = UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING },
 	{ .wmanufacturerid = UFS_VENDOR_MICRON,
 	  .model = UFS_ANY_MODEL,
 	  .quirk = UFS_DEVICE_QUIRK_DELAY_BEFORE_LPM },
