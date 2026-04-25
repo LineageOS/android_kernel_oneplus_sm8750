@@ -51,6 +51,7 @@ arch/arm64/include/asm/brk-imm.h
 arch/arm64/include/asm/bug.h
 arch/arm64/include/asm/cache.h
 arch/arm64/include/asm/cacheflush.h
+arch/arm64/include/asm/cfi.h
 arch/arm64/include/asm/checksum.h
 arch/arm64/include/asm/clocksource.h
 arch/arm64/include/asm/cmpxchg.h
@@ -2194,6 +2195,7 @@ fs/f2fs/inline.c
 fs/f2fs/inode.c
 fs/f2fs/iostat.c
 fs/f2fs/iostat.h
+fs/f2fs/lock.c
 fs/f2fs/namei.c
 fs/f2fs/node.c
 fs/f2fs/node.h
@@ -2797,6 +2799,7 @@ include/linux/args.h
 include/linux/arm-smccc.h
 include/linux/arm_ffa.h
 include/linux/arm_sdei.h
+include/linux/array_size.h
 include/linux/asn1.h
 include/linux/asn1_ber_bytecode.h
 include/linux/asn1_decoder.h
@@ -3540,6 +3543,7 @@ include/linux/perf_regs.h
 include/linux/personality.h
 include/linux/pfn.h
 include/linux/pfn_t.h
+include/linux/pgalloc.h
 include/linux/pgsize_migration.h
 include/linux/pgsize_migration_inline.h
 include/linux/pgtable.h
@@ -6663,6 +6667,7 @@ security/selinux/include/avc.h
 security/selinux/include/avc_ss.h
 security/selinux/include/classmap.h
 security/selinux/include/conditional.h
+security/selinux/include/hash.h
 security/selinux/include/ibpkey.h
 security/selinux/include/ima.h
 security/selinux/include/initial_sid_to_string.h

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2012-2021, The Linux Foundation. All rights reserved. */
-/* Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. */
 
 #include <linux/bitmap.h>
 #include <linux/debugfs.h>
@@ -1116,8 +1116,10 @@ static int pmic_arb_read_apid_map_v5(struct spmi_pmic_arb *pmic_arb)
 			break;
 
 		regval = readl_relaxed(pmic_arb->core + offset);
-		if (!regval)
+		if (!regval) {
+			apidd->irq_ee = INVALID_EE;
 			continue;
+		}
 		ppid = (regval >> 8) & PMIC_ARB_PPID_MASK;
 		is_irq_ee = PMIC_ARB_CHAN_IS_IRQ_OWNER(regval);
 
