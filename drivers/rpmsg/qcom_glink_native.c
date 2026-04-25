@@ -175,11 +175,11 @@ struct qcom_glink {
 	void *ilc;
 };
 
-enum {
-	GLINK_STATE_CLOSED,
-	GLINK_STATE_OPENING,
-	GLINK_STATE_OPEN,
-	GLINK_STATE_CLOSING,
+enum glink_channel_state {
+	GLINK_CHANNEL_CLOSED,
+	GLINK_CHANNEL_OPENING,
+	GLINK_CHANNEL_OPENED,
+	GLINK_CHANNEL_CLOSING,
 };
 
 /**
@@ -189,6 +189,7 @@ enum {
  * @glink:	qcom_glink context handle
  * @refcount:	refcount for the channel object
  * @recv_lock:	guard for @ept.cb
+ * @state_lock:	guard for glink channel state
  * @name:	unique channel name/identifier
  * @lcid:	channel id, in local space
  * @rcid:	channel id, in remote space
@@ -196,6 +197,8 @@ enum {
  * @liids:	idr of all local intents
  * @riids:	idr of all remote intents
  * @defer_intents: list of intents held by the client released by rpmsg_rx_done
+ * @local_state:	local channel state
+ * @remote_opened:	remote channel state
  * @buf:	receive buffer, for gathering fragments
  * @buf_offset:	write offset in @buf
  * @buf_size:	size of current @buf
@@ -220,6 +223,7 @@ struct glink_channel {
 	struct kref refcount;
 
 	spinlock_t recv_lock;
+	spinlock_t state_lock;
 
 	char *name;
 	unsigned int lcid;
@@ -230,6 +234,8 @@ struct glink_channel {
 	struct idr riids;
 	struct list_head defer_intents;
 
+	enum glink_channel_state local_state;
+	bool remote_opened;
 
 	struct task_struct *rx_task;
 	struct list_head rx_queue;
@@ -288,6 +294,110 @@ static const struct rpmsg_endpoint_ops glink_endpoint_ops;
 #define NATIVE_CD_SIG			BIT(29)
 #define NATIVE_RI_SIG			BIT(28)
 
+static bool qcom_glink_channel_is_fully_opened(struct glink_channel *channel)
+{
+	bool ret;
+	unsigned long flags;
+
+	if (!channel)
+		return false;
+
+	spin_lock_irqsave(&channel->state_lock, flags);
+	ret = (channel->local_state == GLINK_CHANNEL_OPENED && channel->remote_opened);
+	spin_unlock_irqrestore(&channel->state_lock, flags);
+
+	return ret;
+}
+
+static bool qcom_glink_channel_update_local_state(struct glink_channel *channel,
+						   enum glink_channel_state state)
+{
+	bool is_fully_closed = false;
+	unsigned long flags;
+	enum glink_channel_state old_state;
+
+	if (!channel)
+		return false;
+
+	spin_lock_irqsave(&channel->state_lock, flags);
+	old_state = channel->local_state;
+
+	/* Validate state transition */
+	switch (old_state) {
+	case GLINK_CHANNEL_CLOSED:
+		if (state != GLINK_CHANNEL_OPENING) {
+			CH_ERR(channel, "Invalid state transition: CLOSED -> %d\n", state);
+			    is_fully_closed = (channel->local_state == GLINK_CHANNEL_CLOSED &&
+				    !channel->remote_opened);
+			goto unlock;
+		}
+		break;
+	case GLINK_CHANNEL_OPENING:
+		if (state != GLINK_CHANNEL_OPENED && state != GLINK_CHANNEL_CLOSED &&
+		    state != GLINK_CHANNEL_CLOSING) {
+			CH_ERR(channel, "Invalid state transition: OPENING -> %d\n", state);
+			is_fully_closed = (channel->local_state == GLINK_CHANNEL_CLOSED &&
+				    !channel->remote_opened);
+			goto unlock;
+		}
+		break;
+	case GLINK_CHANNEL_OPENED:
+		if (state != GLINK_CHANNEL_CLOSING) {
+			CH_ERR(channel, "Invalid state transition: OPENED -> %d\n", state);
+			is_fully_closed = (channel->local_state == GLINK_CHANNEL_CLOSED &&
+				    !channel->remote_opened);
+			goto unlock;
+		}
+		break;
+	case GLINK_CHANNEL_CLOSING:
+		if (state != GLINK_CHANNEL_CLOSED) {
+			CH_ERR(channel, "Invalid state transition: CLOSING -> %d\n", state);
+			is_fully_closed = (channel->local_state == GLINK_CHANNEL_CLOSED &&
+				    !channel->remote_opened);
+			goto unlock;
+		}
+		break;
+	default:
+		CH_ERR(channel, "Unknown current state: %d\n", old_state);
+		is_fully_closed = (channel->local_state == GLINK_CHANNEL_CLOSED &&
+			    !channel->remote_opened);
+		goto unlock;
+	}
+
+	channel->local_state = state;
+	is_fully_closed = (channel->local_state == GLINK_CHANNEL_CLOSED &&
+		    !channel->remote_opened);
+
+	CH_INFO(channel, "Local state: %d -> %d, fully_closed=%d\n",
+		old_state, state, is_fully_closed);
+
+unlock:
+	spin_unlock_irqrestore(&channel->state_lock, flags);
+	return is_fully_closed;
+}
+
+static bool qcom_glink_channel_update_remote_state(struct glink_channel *channel, bool opened)
+{
+	bool is_fully_closed;
+	unsigned long flags;
+	bool old_state;
+
+	if (!channel)
+		return false;
+
+	spin_lock_irqsave(&channel->state_lock, flags);
+	old_state = channel->remote_opened;
+	channel->remote_opened = opened;
+	is_fully_closed = (channel->local_state == GLINK_CHANNEL_CLOSED &&
+			   !channel->remote_opened);
+	spin_unlock_irqrestore(&channel->state_lock, flags);
+
+	CH_INFO(channel, "Remote state: %d -> %d, fully_closed=%d\n",
+		old_state, opened, is_fully_closed);
+
+	return is_fully_closed;
+}
+
 static struct glink_channel *qcom_glink_alloc_channel(struct qcom_glink *glink,
 						      const char *name)
 {
@@ -300,6 +410,7 @@ static struct glink_channel *qcom_glink_alloc_channel(struct qcom_glink *glink,
 	/* Setup glink internal glink_channel data */
 	spin_lock_init(&channel->recv_lock);
 	spin_lock_init(&channel->intent_lock);
+	spin_lock_init(&channel->state_lock);
 	mutex_init(&channel->intent_req_lock);
 
 	channel->glink = glink;
@@ -308,6 +419,10 @@ static struct glink_channel *qcom_glink_alloc_channel(struct qcom_glink *glink,
 		kfree(channel);
 		return ERR_PTR(-ENOMEM);
 	}
+
+	/* Initialize state fields */
+	channel->local_state = GLINK_CHANNEL_CLOSED;
+	channel->remote_opened = false;
 
 	init_completion(&channel->open_req);
 	init_completion(&channel->open_ack);
@@ -594,6 +709,8 @@ static int qcom_glink_send_open_req(struct qcom_glink *glink,
 	int ret;
 	unsigned long flags;
 
+	qcom_glink_channel_update_local_state(channel, GLINK_CHANNEL_OPENING);
+
 	kref_get(&channel->refcount);
 
 	spin_lock_irqsave(&glink->idr_lock, flags);
@@ -601,8 +718,10 @@ static int qcom_glink_send_open_req(struct qcom_glink *glink,
 			       RPM_GLINK_CID_MIN, RPM_GLINK_CID_MAX,
 			       GFP_ATOMIC);
 	spin_unlock_irqrestore(&glink->idr_lock, flags);
-	if (ret < 0)
+	if (ret < 0) {
+		qcom_glink_channel_update_local_state(channel, GLINK_CHANNEL_CLOSED);
 		return ret;
+	}
 
 	channel->lcid = ret;
 	CH_INFO(channel, "\n");
@@ -625,6 +744,7 @@ remove_idr:
 	idr_remove(&glink->lcids, channel->lcid);
 	channel->lcid = 0;
 	spin_unlock_irqrestore(&glink->idr_lock, flags);
+	qcom_glink_channel_update_local_state(channel, GLINK_CHANNEL_CLOSED);
 
 	return ret;
 }
@@ -633,12 +753,15 @@ static void qcom_glink_send_close_req(struct qcom_glink *glink,
 				      struct glink_channel *channel)
 {
 	struct glink_msg req;
+	bool is_fully_closed;
+
+	is_fully_closed = qcom_glink_channel_update_local_state(channel, GLINK_CHANNEL_CLOSING);
 
 	req.cmd = cpu_to_le16(GLINK_CMD_CLOSE);
 	req.param1 = cpu_to_le16(channel->lcid);
 	req.param2 = 0;
 
-	CH_INFO(channel, "\n");
+	CH_INFO(channel, "fully_closed=%d\n", is_fully_closed);
 	qcom_glink_tx(glink, &req, sizeof(req), NULL, 0, true);
 }
 
@@ -1512,6 +1635,19 @@ static int qcom_glink_rx_open_ack(struct qcom_glink *glink, unsigned int lcid)
 	}
 
 	CH_INFO(channel, "\n");
+
+	if (channel->local_state != GLINK_CHANNEL_OPENING) {
+		CH_ERR(channel, "Received open ack in invalid state: %d\n",
+		       channel->local_state);
+		qcom_glink_channel_ref_put(channel);
+		return -EINVAL;
+	}
+
+	qcom_glink_channel_update_local_state(channel, GLINK_CHANNEL_OPENED);
+
+	if (qcom_glink_channel_is_fully_opened(channel))
+		CH_INFO(channel, "Channel is now fully opened\n");
+
 	complete_all(&channel->open_ack);
 	qcom_glink_channel_ref_put(channel);
 	return 0;
@@ -1717,7 +1853,6 @@ static struct glink_channel *qcom_glink_create_local(struct qcom_glink *glink,
 	if (IS_ERR(channel))
 		return ERR_CAST(channel);
 
-	CH_INFO(channel, "\n");
 	ret = qcom_glink_send_open_req(glink, channel);
 	if (ret)
 		goto release_channel;
@@ -1729,6 +1864,11 @@ static struct glink_channel *qcom_glink_create_local(struct qcom_glink *glink,
 	ret = wait_for_completion_timeout(&channel->open_req, 5 * HZ);
 	if (!ret)
 		goto err_timeout;
+
+	if (qcom_glink_channel_is_fully_opened(channel))
+		CH_INFO(channel, "Channel is fully opened\n");
+	else
+		CH_INFO(channel, "Channel is not fully opened yet\n");
 
 	return channel;
 
@@ -1742,6 +1882,7 @@ err_timeout:
 
 release_channel:
 	CH_INFO(channel, "release_channel\n");
+
 	/* Release qcom_glink_send_open_req() reference */
 	kref_put(&channel->refcount, qcom_glink_channel_release);
 	/* Release qcom_glink_alloc_channel() reference */
@@ -2013,8 +2154,19 @@ static int __qcom_glink_send(struct glink_channel *channel,
 	int chunk_size = len;
 	size_t offset = 0;
 
+	if (!qcom_glink_channel_is_fully_opened(channel)) {
+		CH_ERR(channel, "Attempt to send on a channel that is not fully open\n");
+		return -ENOTCONN;
+	}
+
 	if (!glink->intentless) {
 		while (!intent) {
+			/* Re-check channel state before intent operations */
+			if (!qcom_glink_channel_is_fully_opened(channel)) {
+				CH_ERR(channel, "Channel closed during intent allocation\n");
+				return -ENOTCONN;
+			}
+
 			spin_lock_irqsave(&channel->intent_lock, flags);
 			idr_for_each_entry(&channel->riids, tmp, iid) {
 				if (tmp->size >= len && !tmp->in_use) {
@@ -2046,6 +2198,20 @@ static int __qcom_glink_send(struct glink_channel *channel,
 	}
 
 	while (offset < len) {
+		/* Re-check channel state before each chunk transmission */
+		if (!qcom_glink_channel_is_fully_opened(channel)) {
+			CH_ERR(channel, "Channel closed during transmission at offset %zu/%d\n",
+				offset, len);
+			if (intent) {
+				intent->in_use = false;
+				/* If we sent partial data, the remote intent is now corrupted */
+				if (offset > 0) {
+					CH_ERR(channel, "%zu bytes sent, %zu bytes dropped\n",
+						offset, len - offset);
+				}
+			}
+			return -ENOTCONN;
+		}
 		chunk_size = len - offset;
 		if (chunk_size > SZ_8K && wait)
 			chunk_size = SZ_8K;
@@ -2237,7 +2403,13 @@ static int qcom_glink_rx_open(struct qcom_glink *glink, unsigned int rcid,
 
 		/* The opening dance was initiated by the remote */
 		create_device = true;
+	} else if (channel->remote_opened) {
+		/* Channel already opened on remote side */
+		CH_INFO(channel, "remote already opened\n");
+		return 0;
 	}
+
+	qcom_glink_channel_update_remote_state(channel, true);
 
 	spin_lock_irqsave(&glink->idr_lock, flags);
 	ret = idr_alloc(&glink->rcids, channel, rcid, rcid + 1, GFP_ATOMIC);
@@ -2284,7 +2456,6 @@ static int qcom_glink_rx_open(struct qcom_glink *glink, unsigned int rcid,
 
 		channel->rpdev = rpdev;
 	}
-	CH_INFO(channel, "\n");
 
 	return 0;
 
@@ -2308,13 +2479,22 @@ static void qcom_glink_rx_close(struct qcom_glink *glink, unsigned int rcid)
 	struct rpmsg_channel_info chinfo;
 	struct glink_channel *channel;
 	unsigned long flags;
+	bool is_fully_closed;
 
 	spin_lock_irqsave(&glink->idr_lock, flags);
 	channel = idr_find(&glink->rcids, rcid);
 	spin_unlock_irqrestore(&glink->idr_lock, flags);
 	if (WARN(!channel, "close request on unknown channel\n"))
 		return;
-	CH_INFO(channel, "\n");
+
+	if (!channel->remote_opened) {
+		CH_INFO(channel, "remote already closed\n");
+		return;
+	}
+
+	is_fully_closed = qcom_glink_channel_update_remote_state(channel, false);
+
+	CH_INFO(channel, "is_fully_closed=%d\n", is_fully_closed);
 
 	WRITE_ONCE(channel->intent_req_result, 0);
 	wake_up_all(&channel->intent_req_wq);
@@ -2330,18 +2510,26 @@ static void qcom_glink_rx_close(struct qcom_glink *glink, unsigned int rcid)
 
 	qcom_glink_send_close_ack(glink, channel);
 
-	spin_lock_irqsave(&glink->idr_lock, flags);
-	idr_remove(&glink->rcids, channel->rcid);
-	channel->rcid = 0;
-	spin_unlock_irqrestore(&glink->idr_lock, flags);
-
-	kref_put(&channel->refcount, qcom_glink_channel_release);
+	/* Only clear rcid when channel is fully closed */
+	if (is_fully_closed) {
+		spin_lock_irqsave(&glink->idr_lock, flags);
+		idr_remove(&glink->rcids, channel->rcid);
+		channel->rcid = 0;
+		spin_unlock_irqrestore(&glink->idr_lock, flags);
+		CH_INFO(channel, "Channel fully closed, rcid cleared\n");
+		kref_put(&channel->refcount, qcom_glink_channel_release);
+	} else {
+		CH_INFO(channel, "Channel not fully closed yet, keeping rcid=%d\n", channel->rcid);
+	}
 }
 
 static void qcom_glink_rx_close_ack(struct qcom_glink *glink, unsigned int lcid)
 {
 	struct glink_channel *channel;
 	unsigned long flags;
+	bool is_fully_closed;
+
+	GLINK_INFO(glink->ilc, "Received close ack with lcid=%d\n", lcid);
 
 	/* To wakeup any blocking writers */
 	wake_up_all(&glink->tx_avail_notify);
@@ -2354,15 +2542,37 @@ static void qcom_glink_rx_close_ack(struct qcom_glink *glink, unsigned int lcid)
 	}
 	CH_INFO(channel, "\n");
 
-	idr_remove(&glink->lcids, channel->lcid);
-	channel->lcid = 0;
+	if (channel->local_state != GLINK_CHANNEL_CLOSING) {
+		CH_ERR(channel, "Received close ack in invalid state: %d\n",
+		       channel->local_state);
+		spin_unlock_irqrestore(&glink->idr_lock, flags);
+		return;
+	}
+
+	/* Don't remove from lcids yet - keep it until fully closed */
 	spin_unlock_irqrestore(&glink->idr_lock, flags);
 
-	/* Reinit any variables that are important to endpoint creation */
-	reinit_completion(&channel->open_ack);
-	channel->channel_ready = false;
+	is_fully_closed = qcom_glink_channel_update_local_state(channel, GLINK_CHANNEL_CLOSED);
 
-	kref_put(&channel->refcount, qcom_glink_channel_release);
+	/* Only clear lcid when channel is fully closed (local and remote) */
+	if (is_fully_closed) {
+		spin_lock_irqsave(&glink->idr_lock, flags);
+		idr_remove(&glink->lcids, channel->lcid);
+		channel->lcid = 0;
+		idr_remove(&glink->rcids, channel->rcid);
+		channel->rcid = 0;
+		spin_unlock_irqrestore(&glink->idr_lock, flags);
+
+		/* Reinit any variables that are important to endpoint creation */
+		reinit_completion(&channel->open_ack);
+		channel->channel_ready = false;
+
+		kref_put(&channel->refcount, qcom_glink_channel_release);
+
+		CH_INFO(channel, "Channel fully closed, lcid cleared\n");
+	} else {
+		CH_INFO(channel, "Channel not fully closed yet, keeping lcid=%d\n", channel->lcid);
+	}
 }
 
 static void qcom_glink_work(struct work_struct *work)
