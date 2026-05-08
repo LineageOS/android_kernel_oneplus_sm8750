@@ -12,6 +12,7 @@
   blk_fill_rwbs
   __break_lease
   cgroup_add_legacy_cftypes
+  cgroup_add_dfl_cftypes
   config_item_init_type_name
   console_printk
   copy_fs_struct
@@ -602,3 +603,5 @@
   __tracepoint_android_vh_lock_delay_schedule
   __tracepoint_android_vh_lock_task_fork
   __tracepoint_android_vh_lock_task_exit
+  __tracepoint_android_vh_f2fs_set_bio_flag
+  __traceiter_android_vh_f2fs_set_bio_flag
