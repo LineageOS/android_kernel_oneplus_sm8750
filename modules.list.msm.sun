@@ -69,6 +69,7 @@ tcsrcc-tuna.ko
 sg.ko
 gdsc-regulator.ko
 cqhci.ko
+cqhci-crypto-qti.ko
 sdhci-msm.ko
 smem.ko
 socinfo.ko

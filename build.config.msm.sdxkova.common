@@ -1,17 +1,13 @@
 ################################################################################
 ## Inheriting configs from ACK
-. ${ROOT_DIR}/msm-kernel/build.config.common
-. ${ROOT_DIR}/msm-kernel/build.config.aarch64
+. ${ROOT_DIR}/${KERNEL_DIR}/build.config.common
+. ${ROOT_DIR}/${KERNEL_DIR}/build.config.aarch64
 
 ################################################################################
 ## Variant setup
 HERMETIC_TOOLCHAIN=0
 VARIANTS=(perf_defconfig debug_defconfig)
 [ -z "${VARIANT}" ] && VARIANT=debug_defconfig
-
-if [ -e "${ROOT_DIR}/msm-kernel" -a "${KERNEL_DIR}" = "common" ]; then
-	KERNEL_DIR="msm-kernel"
-fi
 
 ABL_SRC=bootable/bootloader/edk2
 BOOT_IMAGE_HEADER_VERSION=2

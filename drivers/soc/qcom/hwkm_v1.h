@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __HWKM_H_
@@ -8,8 +8,7 @@
 
 #include <linux/types.h>
 #include <linux/stddef.h>
-
-#include <linux/crypto-qti-common.h>
+#include <linux/blk-crypto.h>
 
 /* Maximum number of bytes in a key used in a KEY_SLOT_RDWR operation */
 #define HWKM_MAX_KEY_SIZE 32
@@ -17,6 +16,17 @@
 #define HWKM_MAX_CTX_SIZE 64
 /* Maximum number of bytes in a WKB used in a key wrap or unwrap operation */
 #define HWKM_MAX_BLOB_SIZE 68
+
+struct ice_mmio_data {
+	void __iomem *ice_base_mmio;
+	void __iomem *ice_hwkm_mmio;
+	struct device *dev;
+	void __iomem *km_base;
+	struct resource *km_res;
+	struct list_head clk_list_head;
+	bool is_hwkm_clk_available;
+	bool is_hwkm_enabled;
+};
 
 /* Opcodes to be set in the op field of a command */
 enum hwkm_op {
@@ -279,33 +289,13 @@ struct hwkm_rsp {
 	};
 };
 
-#if (IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1))
-int qti_hwkm_handle_cmd(struct hwkm_cmd *cmd, struct hwkm_rsp *rsp);
-int qti_hwkm_clocks(bool on);
-int qti_hwkm_init(const struct ice_mmio_data *mmio_data);
-bool qti_hwkm_init_required(const struct ice_mmio_data *mmio_data);
-bool qti_hwkm_is_ice_tpkey_set(const struct ice_mmio_data *mmio_data);
-#else
-static inline int qti_hwkm_handle_cmd(struct hwkm_cmd *cmd,
-				   struct hwkm_rsp *rsp)
-{
-	return -EOPNOTSUPP;
-}
-static inline int qti_hwkm_clocks(bool on)
-{
-	return -EOPNOTSUPP;
-}
-static inline int qti_hwkm_init(const struct ice_mmio_data *mmio_data)
-{
-	return -EOPNOTSUPP;
-}
-static inline bool qti_hwkm_init_required(const struct ice_mmio_data *mmio_data)
-{
-	return -EOPNOTSUPP;
-}
-bool qti_hwkm_is_ice_tpkey_set(const struct ice_mmio_data *mmio_data)
-{
-	return -EOPNOTSUPP;
-}
-#endif /* CONFIG_QTI_HW_KEY_MANAGER_V1 */
+int qcom_hwkm_program_key(void __iomem *base,
+			   const struct blk_crypto_key *key,
+			   unsigned int slot,
+			   unsigned int data_unit_mask, int capid);
+int qcom_hwkm_invalidate_key(unsigned int slot);
+int qcom_hwkm_derive_raw_secret_platform(
+				const u8 *wrapped_key,
+				unsigned int wrapped_key_size, u8 *secret,
+				unsigned int secret_size);
 #endif /* __HWKM_H_ */

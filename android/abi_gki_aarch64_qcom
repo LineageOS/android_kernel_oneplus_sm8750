@@ -1438,6 +1438,7 @@
   pci_store_saved_state
   pci_walk_bus
   pci_write_config_dword
+  pci_write_config_word
   pcpu_nr_pages
   __per_cpu_offset
   per_cpu_ptr_to_phys

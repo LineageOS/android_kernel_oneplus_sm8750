@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2015, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #ifndef LINUX_MMC_CQHCI_H
 #define LINUX_MMC_CQHCI_H
@@ -167,6 +167,12 @@
 /* crypto task descriptor fields (for bits 64-127 of task descriptor) */
 #define CQHCI_CRYPTO_ENABLE_BIT		(1ULL << 47)
 #define CQHCI_CRYPTO_KEYSLOT(x)		((u64)(x) << 32)
+
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+#define DATA_UNIT_NUM(x)		(((u64)(x) & 0xFFFFFFFF) << 0)
+#define CRYPTO_CONFIG_INDEX(x)		(((u64)(x) & 0xFF) << 32)
+#define CRYPTO_ENABLE(x)		(((u64)(x) & 0x1) << 47)
+#endif
 
 /* transfer descriptor fields */
 #define CQHCI_DAT_LENGTH(x)		(((x) & 0xFFFF) << 16)

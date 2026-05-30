@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <crypto/algapi.h>
@@ -10,10 +10,11 @@
 #include "cqhci-crypto-qti.h"
 #include <linux/blk-crypto-profile.h>
 #include <soc/qcom/ice.h>
-#if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
+
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
 #include <linux/crypto-qti-common.h>
-#include <linux/firmware/qcom/qcom_scm.h>
-#endif /* CONFIG_QTI_HW_KEY_MANAGER_V1 */
+#include "../core/queue.h"
+#endif /* CONFIG_QTI_CRYPTO_FDE */
 
 #define RAW_SECRET_SIZE 32
 #define MINIMUM_DUN_SIZE 512
@@ -78,13 +79,8 @@ static int cqhci_crypto_qti_keyslot_program(struct blk_crypto_profile *profile,
 	else
 		ice_key_size = QCOM_ICE_CRYPTO_KEY_SIZE_256;
 
-#if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
-	err = crypto_qti_keyslot_program(cq_host->ice->base, key, slot, data_unit_mask,
-					QCOM_SCM_ICE_CIPHER_AES_256_XTS, SDCC_CE);
-#else
 	err = qcom_ice_program_key_hwkm(cq_host->ice, QCOM_ICE_CRYPTO_ALG_AES_XTS, ice_key_size,
 					key, data_unit_mask, slot);
-#endif /* CONFIG_QTI_HW_KEY_MANAGER_V1 */
 	if (err)
 		pr_err("%s: failed with error %d\n", __func__, err);
 
@@ -98,11 +94,7 @@ static int cqhci_crypto_qti_keyslot_evict(struct blk_crypto_profile *profile,
 	int err = 0;
 	struct cqhci_host *host = cqhci_host_from_crypto(profile);
 
-#if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
-	err = crypto_qti_keyslot_evict(host->ice->base, slot, SDCC_CE);
-#else
 	err = qcom_ice_evict_key(host->ice, slot);
-#endif /* CONFIG_QTI_HW_KEY_MANAGER_V1 */
 	if (err)
 		pr_err("%s: failed with error %d\n", __func__, err);
 
@@ -115,14 +107,9 @@ static int cqhci_crypto_qti_derive_raw_secret(struct blk_crypto_profile *profile
 {
 	int err = 0;
 
-#if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
-	err = crypto_qti_derive_raw_secret(wrapped_key, wrapped_key_size,
-					  sw_secret, BLK_CRYPTO_SW_SECRET_SIZE);
-#else
 	struct cqhci_host *host = cqhci_host_from_crypto(profile);
 	err = qcom_ice_derive_sw_secret(host->ice, wrapped_key, wrapped_key_size,
 					  sw_secret);
-#endif /* CONFIG_QTI_HW_KEY_MANAGER_V1 */
 	if (err)
 		pr_err("%s: failed with error %d\n", __func__, err);
 
@@ -196,6 +183,23 @@ int cqhci_qti_crypto_init(struct cqhci_host *cq_host)
 	 * configurations (a.k.a. keyslots) is CCAP.CFGC + 1.
 	 */
 	num_keyslots = cq_host->crypto_capabilities.config_count + 1;
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+	if (num_keyslots > crypto_qti_ice_get_num_fde_slots()) {
+		/*
+		 * Reduce the total number of slots available to FBE
+		 * (by the number reserved for the FDE)
+		 * Check at least one slot for backward compatibility,
+		 * otherwise return failure
+		 */
+		if (num_keyslots - crypto_qti_ice_get_num_fde_slots() < 1) {
+			pr_err("%s: Too much slots allocated to fde\n", __func__);
+			err = -EINVAL;
+			goto out;
+		} else {
+			num_keyslots = num_keyslots - crypto_qti_ice_get_num_fde_slots();
+		}
+	}
+#endif
 
 	err = devm_blk_crypto_profile_init(dev, profile, num_keyslots);
 	if (err)

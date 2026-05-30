@@ -1,12 +1,11 @@
 load(
-    "//build:msm_kernel_extensions.bzl",
+    ":msm_kernel_extensions.bzl",
     "define_extras",
     "get_16K_vendor_ramdisk_binaries",
     "get_build_config_fragments",
     "get_dtb_list",
     "get_dtbo_list",
     "get_dtstree",
-    "get_gki_ramdisk_prebuilt_binary",
 )
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
 load(
@@ -47,7 +46,7 @@ def _define_build_config(
 
     gen_config_command = """
       cat << 'EOF' > "$@"
-KERNEL_DIR="msm-kernel"
+KERNEL_DIR="vendor/qcom/kernel"
 VARIANTS=(%s)
 MSM_ARCH=%s
 VARIANT=%s
@@ -214,7 +213,6 @@ def _define_image_build(
         boot_image_outs = None,
         dtbo_list = [],
         vendor_ramdisk_binaries = None,
-        gki_ramdisk_prebuilt_binary = None,
         in_tree_module_list = []):
     """Creates a `kernel_images` target which will generate bootable device images
 
@@ -266,7 +264,6 @@ def _define_image_build(
         vendor_dlkm_modules_blocklist = "modules.vendor_blocklist.msm.{}".format(msm_target),
         dtbo_srcs = [":{}/".format(target) + d for d in dtbo_list] if dtbo_list else None,
         vendor_ramdisk_binaries = vendor_ramdisk_binaries,
-        gki_ramdisk_prebuilt_binary = gki_ramdisk_prebuilt_binary,
         boot_image_outs = boot_image_outs,
         system_dlkm_fs_types = ["ext4"],
         deps = [
@@ -466,7 +463,6 @@ def define_msm_16k_la(
     dtbo_list = get_dtbo_list(msm_target)
     dtstree = get_dtstree(msm_target)
     vendor_ramdisk_binaries = get_16K_vendor_ramdisk_binaries(target)
-    gki_ramdisk_prebuilt_binary = get_gki_ramdisk_prebuilt_binary()
     build_config_fragments = get_build_config_fragments(msm_target)
 
     _define_build_config(
@@ -500,7 +496,6 @@ def define_msm_16k_la(
         build_vendor_boot = True if dtbo_list else False,
         dtbo_list = dtbo_list,
         vendor_ramdisk_binaries = vendor_ramdisk_binaries,
-        gki_ramdisk_prebuilt_binary = gki_ramdisk_prebuilt_binary,
         boot_image_opts = boot_image_opts,
         boot_image_outs = None if dtb_list else ["boot.img", "init_boot.img"],
         in_tree_module_list = in_tree_module_list,

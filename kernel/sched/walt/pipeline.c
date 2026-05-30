@@ -416,6 +416,10 @@ bool find_heaviest_topapp(u64 window_start)
 								(200ULL * MSEC_TO_NSEC)))
 			continue;
 
+		/* skip tasks which are not active since last 2 windows */
+		if (to_be_placed_wts->mark_start < window_start - (sched_ravg_window * 2))
+			continue;
+
 		/* evaluate task for pipeline based on the pipeline_activity_cnt */
 		for (i = start; i < MAX_NR_PIPELINE; i++) {
 			if (!heavy_wts[i]) {

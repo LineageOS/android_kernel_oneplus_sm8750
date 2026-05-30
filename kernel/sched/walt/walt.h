@@ -1388,7 +1388,7 @@ extern unsigned int sysctl_pipeline_busy_boost_pct;
 enum WALT_DEBUG_FEAT {
 	WALT_BUG_UPSTREAM,
 	WALT_BUG_WALT,
-	WALT_BUG_UNUSED,
+	WALT_BUG_BRINGUP,
 
 	/* maximum 4 entries allowed */
 	WALT_DEBUG_FEAT_NR,

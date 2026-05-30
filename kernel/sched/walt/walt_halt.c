@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
@@ -195,6 +195,12 @@ static int drain_rq_cpu_stop(void *data)
 	rq_lock_irqsave(rq, &rf);
 	/* rq lock is pinned */
 
+	/* bail out if this cpu is no longer in the halt mask */
+	if (!cpumask_test_cpu(cpu_of(rq), cpu_halt_mask)) {
+		rq_unlock_irqrestore(rq, &rf);
+		return 0;
+	}
+
 	/* migrate tasks assumes that the lock is pinned, and will unlock/repin */
 	migrate_tasks(rq, &rf);
 
@@ -208,8 +214,9 @@ static int drain_rq_cpu_stop(void *data)
 	 */
 	wrq->enqueue_counter = 0;
 	__balance_callbacks(rq);
-	if (wrq->enqueue_counter)
-		WALT_BUG(WALT_BUG_WALT, NULL, "cpu: %d task was re-enqueued", cpu_of(rq));
+	if (wrq->enqueue_counter && cpumask_test_cpu(cpu_of(rq), cpu_halt_mask))
+		WALT_BUG(WALT_BUG_BRINGUP, NULL, "cpu: %d task was re-enqueued",
+			 cpu_of(rq));
 
 	/* lock is no longer pinned, raw unlock using same flags as locking */
 	raw_spin_rq_unlock_irqrestore(rq, rf.flags);

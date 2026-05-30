@@ -1262,4 +1262,13 @@ config QTI_HW_KEY_MANAGER_V1
 	 HWKM hardware to perform key operations from the kernel which will
 	 be used for storage encryption.
 
+config QTI_CRYPTO_FDE
+        tristate "Enable common crypto functionality used for FDE"
+        default n
+        help
+          Say 'Y' to enable the common crypto implementation to be used by
+          different storage layers such as UFS and EMMC for full disk hardware
+          encryption. this is control only for enable inline crypto engine for Full
+          Disk Encryption.
+
 endmenu

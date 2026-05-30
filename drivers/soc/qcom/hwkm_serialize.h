@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __HWKM_SERIALIZE_H_
@@ -9,7 +9,7 @@
 #include <linux/types.h>
 #include <linux/stddef.h>
 
-#include <linux/hwkm.h>
+#include "hwkm_v1.h"
 
 /* Command lengths (words) */
 #define NIST_KEYGEN_CMD_WORDS 4

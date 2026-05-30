@@ -62,6 +62,4 @@ regmap-spmi.ko
 nvmem_qcom-spmi-sdam.ko
 cqhci-crypto-qti.ko
 minidump.ko
-crypto-qti-common.ko
-crypto-qti-hwkm.ko
-hwkm_v1.ko
+hwkm.ko

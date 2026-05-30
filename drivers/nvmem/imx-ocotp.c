@@ -590,6 +590,7 @@ static void imx_ocotp_fixup_cell_info(struct nvmem_device *nvmem,
 				      struct nvmem_layout *layout,
 				      struct nvmem_cell_info *cell)
 {
+	cell->raw_len = round_up(cell->bytes, 4);
 	cell->read_post_process = imx_ocotp_cell_pp;
 }
 

@@ -89,7 +89,6 @@ def define_qcs610():
         "drivers/mfd/qcom-i2c-pmic.ko",
         "drivers/mfd/qcom-spmi-pmic.ko",
         "drivers/misc/open-dice.ko",
-        "drivers/misc/qseecom_proxy.ko",
         "drivers/misc/vcpu_stall_detector.ko",
         "drivers/mmc/host/cqhci.ko",
         "drivers/mmc/host/sdhci-msm.ko",

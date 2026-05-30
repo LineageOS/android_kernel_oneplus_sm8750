@@ -1,7 +1,7 @@
 load(":target_variants.bzl", "vm_types", "vm_variants")
-load("//msm-kernel:msm_common.bzl", "get_out_dir")
+load(":msm_common.bzl", "get_out_dir")
 load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
-load("//build:msm_kernel_extensions.bzl", "define_combined_vm_image", "define_extras")
+load(":msm_kernel_extensions.bzl", "define_combined_vm_image", "define_extras")
 load(":image_opts.bzl", "vm_image_opts")
 
 target_name = "sun-vms"

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/module.h>
@@ -100,6 +100,28 @@ int qseecom_process_listener_from_smcinvoke(uint32_t *result,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(qseecom_process_listener_from_smcinvoke);
+
+#if IS_ENABLED(CONFIG_QTI_CRYPTO_FDE)
+int qseecom_create_key_in_slot(uint8_t usage_code, uint8_t key_slot,
+			       const uint8_t *key_id, const uint8_t *inhash32)
+{
+	int32_t ret = -1;
+
+	if (qseecom_fun_ops.qseecom_create_key_in_slot) {
+		ret = qseecom_fun_ops.qseecom_create_key_in_slot(usage_code,
+								 key_slot,
+								 key_id,
+								 inhash32);
+		if (ret != 0)
+			pr_err("%s: failed with ret = %d\n", __func__, ret);
+	} else {
+		pr_err_ratelimited("Qseecom driver is not up yet\n");
+		ret = -EAGAIN;
+	}
+	return ret;
+}
+EXPORT_SYMBOL_GPL(qseecom_create_key_in_slot);
+#endif
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Qseecom proxy driver");

@@ -1,4 +1,4 @@
-load("//build:msm_kernel_extensions.bzl", "define_top_level_rules")
+load(":msm_kernel_extensions.bzl", "define_top_level_rules")
 load(":kera_le.bzl", "define_kera_le")
 load(":monaco.bzl", "define_monaco")
 load(":msm_common.bzl", "define_signing_keys")

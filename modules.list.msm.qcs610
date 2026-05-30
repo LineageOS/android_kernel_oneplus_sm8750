@@ -28,6 +28,9 @@ qcom-dcvs.ko
 qcom_llcc_pmu.ko
 qcom-pmu-lib.ko
 sched-walt.ko
+qcom_ice.ko
+ufshcd-crypto-qti.ko
+cqhci-crypto-qti.ko
 qcom_hwspinlock.ko
 nvmem_qfprom.ko
 secure_buffer.ko
@@ -44,15 +47,12 @@ clk-spmi-pmic-div.ko
 qcom-spmi-pmic.ko
 spmi-pmic-arb.ko
 rtc-pm8xxx.ko
-ufshcd-crypto-qti.ko
-cqhci-crypto-qti.ko
 sdhci-msm.ko
 cqhci.ko
 qcom-pdc.ko
 debug-regulator.ko
 qcom_rpmh.ko
 cmd-db.ko
-qcom_ice.ko
 mdt_loader.ko
 gdsc-regulator.ko
 proxy-consumer.ko

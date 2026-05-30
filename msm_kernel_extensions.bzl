@@ -1,5 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//msm-kernel/arch/arm64/boot/dts/vendor:qcom/platform_map.bzl", _get_dtb_list = "get_dtb_list", _get_dtbo_list = "get_dtbo_list")
+load("//vendor/qcom/kernel/arch/arm64/boot/dts/vendor:qcom/platform_map.bzl", _get_dtb_list = "get_dtb_list", _get_dtbo_list = "get_dtbo_list")
 
 def define_top_level_rules():
     for skippable in ["abl", "dtc", "abi"]:
@@ -31,13 +31,10 @@ def get_dtbo_list(target):
     return _get_dtbo_list(target)
 
 def get_dtstree(target):
-    return "//msm-kernel/arch/arm64/boot/dts/vendor:msm_dt"
+    return "//vendor/qcom/kernel/arch/arm64/boot/dts/vendor:msm_dt"
 
 def get_vendor_ramdisk_binaries(target, flavor = None):
     return None
 
 def get_16K_vendor_ramdisk_binaries(target, flavor = None):
-    return None
-
-def get_gki_ramdisk_prebuilt_binary():
     return None

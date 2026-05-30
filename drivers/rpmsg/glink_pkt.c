@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved. */
+/* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. */
 
 #include <linux/platform_device.h>
 #include <linux/ipc_logging.h>
@@ -486,7 +486,7 @@ static ssize_t glink_pkt_read(struct file *file,
 		return -ERESTARTSYS;
 
 	if (!completion_done(&gpdev->ch_open)) {
-		GLINK_PKT_ERR("%s channel in reset\n", gpdev->ch_name);
+		GLINK_PKT_INFO("%s channel in reset\n", gpdev->ch_name);
 		mutex_unlock(&gpdev->lock);
 		return -ENETRESET;
 	}
@@ -603,7 +603,7 @@ static ssize_t glink_pkt_write(struct file *file,
 		goto free_kbuf;
 	}
 	if (!completion_done(&gpdev->ch_open) || !gpdev->rpdev) {
-		GLINK_PKT_ERR("%s channel in reset\n", gpdev->ch_name);
+		GLINK_PKT_INFO("%s channel in reset\n", gpdev->ch_name);
 		ret = -ENETRESET;
 		goto unlock_ch;
 	}
@@ -643,7 +643,7 @@ static __poll_t glink_pkt_poll(struct file *file, poll_table *wait)
 		return POLLERR;
 	}
 	if (!completion_done(&gpdev->ch_open)) {
-		GLINK_PKT_ERR("%s channel in reset\n", gpdev->ch_name);
+		GLINK_PKT_INFO("%s channel in reset\n", gpdev->ch_name);
 		return POLLHUP | POLLPRI;
 	}
 
@@ -653,7 +653,7 @@ static __poll_t glink_pkt_poll(struct file *file, poll_table *wait)
 	mutex_lock(&gpdev->lock);
 
 	if (!completion_done(&gpdev->ch_open) || !gpdev->rpdev) {
-		GLINK_PKT_ERR("%s channel reset after wait\n", gpdev->ch_name);
+		GLINK_PKT_INFO("%s channel reset after wait\n", gpdev->ch_name);
 		mutex_unlock(&gpdev->lock);
 		return POLLHUP;
 	}
@@ -1014,7 +1014,7 @@ static long glink_pkt_ioctl(struct file *file, unsigned int cmd,
 		return -ERESTARTSYS;
 
 	if (!completion_done(&gpdev->ch_open)) {
-		GLINK_PKT_ERR("%s channel in reset\n", gpdev->ch_name);
+		GLINK_PKT_INFO("%s channel in reset\n", gpdev->ch_name);
 		mutex_unlock(&gpdev->lock);
 		return -ENETRESET;
 	}

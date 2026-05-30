@@ -2,7 +2,7 @@
 /*
  * QTI hardware key manager driver.
  *
- * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/types.h>
@@ -20,8 +20,7 @@
 #include <linux/crypto.h>
 #include <linux/bitops.h>
 #include <linux/iommu.h>
-
-#include <linux/hwkm.h>
+#include "hwkm_v1.h"
 #include "hwkmregs.h"
 #include "hwkm_serialize.h"
 
@@ -46,6 +45,26 @@ for (retries = 0; !(cond) && (retries < MAX_RETRIES); retries++)
 #define ICEMEM_SLAVE_TPKEY_VAL	0x192
 #define KM_MASTER_TPKEY_SLOT	10
 #define BYTE_ORDER_VAL		8
+#define KEYMANAGER_ICE_MAP_SLOT(slot)	((slot * 2) + 10)
+#define GP_KEYSLOT			140
+#define RAW_SECRET_KEYSLOT		141
+#define TPKEY_SLOT_ICEMEM_SLAVE		0x92
+#define SLOT_EMPTY_ERROR		0x1000
+#define INLINECRYPT_CTX			"inline encryption key"
+#define RAW_SECRET_CTX			"raw secret"
+#define BYTE_ORDER_VAL			8
+#define KEY_WRAPPED_SIZE		68
+#define RAW_SECRET_SIZE         32
+#define QCOM_ICE_HWKM_REG_OFFSET	0x8000
+
+#define ICE_LUT_KEYS_CRYPTOCFG_R_16		0x4040
+#define ICE_LUT_KEYS_CRYPTOCFG_R_17		0x4044
+#define ICE_LUT_KEYS_CRYPTOCFG_OFFSET		0x80
+
+#define ice_writel(ice_mmio, val, reg) \
+	writel_relaxed((val), ice_mmio + (reg))
+#define ice_readl(ice_mmio, reg)       \
+	readl_relaxed(ice_mmio + (reg))
 
 #define qti_hwkm_readl(hwkm, reg, dest)				\
 	(((dest) == KM_MASTER) ?				\
@@ -66,6 +85,17 @@ for (retries = 0; !(cond) && (retries < MAX_RETRIES); retries++)
 	qti_hwkm_writel(hwkm, val, reg, dest);			\
 }
 
+union crypto_cfg {
+	__le32 regval[2];
+	struct {
+		u8 dusize;
+		u8 capidx;
+		u8 nop;
+		u8 cfge;
+		u8 dumb[4];
+	};
+};
+
 struct hwkm_clk_info {
 	struct list_head list;
 	struct clk *clk;
@@ -77,8 +107,9 @@ struct hwkm_clk_info {
 };
 
 static struct ice_mmio_data *mmio_data_ref;
+static bool qti_hwkm_init_done;
 
-bool qti_hwkm_is_ice_tpkey_set(const struct ice_mmio_data *mmio_data)
+static bool qti_hwkm_is_ice_tpkey_set(const struct ice_mmio_data *mmio_data)
 {
 	u32 val = 0;
 
@@ -89,9 +120,8 @@ bool qti_hwkm_is_ice_tpkey_set(const struct ice_mmio_data *mmio_data)
 
 	return (val == 0x1);
 }
-EXPORT_SYMBOL_GPL(qti_hwkm_is_ice_tpkey_set);
 
-bool qti_hwkm_init_required(const struct ice_mmio_data *mmio_data)
+static bool qti_hwkm_init_required(const struct ice_mmio_data *mmio_data)
 {
 	u32 val = 0;
 
@@ -101,7 +131,6 @@ bool qti_hwkm_init_required(const struct ice_mmio_data *mmio_data)
 
 	return (val == 1);
 }
-EXPORT_SYMBOL_GPL(qti_hwkm_init_required);
 
 static unsigned int qti_hwkm_get_reg_data(struct ice_mmio_data *mmio_data,
 						 u32 reg, u32 offset, u32 mask,
@@ -195,7 +224,7 @@ static int qti_hwkm_master_transaction(struct ice_mmio_data *mmio_data,
 
 		pr_err("%s: CMD_FIFO_CLEAR_BIT not set\n", __func__);
 		err = -1;
-		return -err;
+		return err;
 	}
 
 	if (qti_hwkm_testb(mmio_data_ref, QTI_HWKM_MASTER_RG_BANK2_BANKN_IRQ_STATUS,
@@ -349,7 +378,6 @@ static int qti_hwkm_ice_transaction(struct ice_mmio_data *mmio_data,
 			rsp_discard = qti_hwkm_readl(mmio_data,
 				QTI_HWKM_ICE_RG_BANK0_RSP_0, ICEMEM_SLAVE);
 		}
-		pr_err("%s: while exit\n", __func__);
 		/* Clear RSP_FIFO_NOT_EMPTY status bit */
 		qti_hwkm_setb(mmio_data, QTI_HWKM_ICE_RG_BANK0_BANKN_IRQ_STATUS,
 			RSP_FIFO_NOT_EMPTY, ICEMEM_SLAVE);
@@ -1082,7 +1110,7 @@ out:
 	return ret;
 }
 
-int qti_hwkm_clocks(bool on)
+static int qti_hwkm_clocks(bool on)
 {
 	int ret = 0;
 
@@ -1094,7 +1122,6 @@ int qti_hwkm_clocks(bool on)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(qti_hwkm_clocks);
 
 static int qti_hwkm_get_device_tree_data(struct platform_device *pdev,
 					 struct ice_mmio_data *hwkm_dev)
@@ -1134,7 +1161,7 @@ out:
 	return ret;
 }
 
-int qti_hwkm_handle_cmd(struct hwkm_cmd *cmd, struct hwkm_rsp *rsp)
+static int qti_hwkm_handle_cmd(struct hwkm_cmd *cmd, struct hwkm_rsp *rsp)
 {
 	switch (cmd->op) {
 	case SET_TPKEY:
@@ -1156,7 +1183,6 @@ int qti_hwkm_handle_cmd(struct hwkm_cmd *cmd, struct hwkm_rsp *rsp)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(qti_hwkm_handle_cmd);
 
 static void qti_hwkm_configure_slot_access(struct ice_mmio_data *mmio_data)
 {
@@ -1298,7 +1324,7 @@ static int qti_hwkm_set_tpkey(struct ice_mmio_data *mmio_data)
 	return 0;
 }
 
-int qti_hwkm_init(const struct ice_mmio_data *mmio_data)
+static int qti_hwkm_init(const struct ice_mmio_data *mmio_data)
 {
 	int ret = 0;
 
@@ -1329,7 +1355,335 @@ int qti_hwkm_init(const struct ice_mmio_data *mmio_data)
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(qti_hwkm_init);
+
+static int qcom_hwkm_get_mmio_data(struct ice_mmio_data *data, void __iomem *base)
+{
+	if (!base) {
+		pr_err("%s: ICE value invalid\n", __func__);
+		return -EINVAL;
+	}
+	data->ice_base_mmio = base;
+	data->ice_hwkm_mmio = base + QCOM_ICE_HWKM_REG_OFFSET;
+
+	return 0;
+}
+
+static int qcom_hwkm_evict_slot(unsigned int slot, bool double_key)
+{
+	struct hwkm_cmd cmd_clear;
+	struct hwkm_rsp rsp_clear;
+
+	memset(&cmd_clear, 0, sizeof(cmd_clear));
+	cmd_clear.op = KEY_SLOT_CLEAR;
+	cmd_clear.clear.dks = slot;
+	if (double_key)
+		cmd_clear.clear.is_double_key = true;
+
+	return qti_hwkm_handle_cmd(&cmd_clear, &rsp_clear);
+}
+
+static int qcom_hwkm_program_key_v1(const struct ice_mmio_data *mmio_data,
+				     const struct blk_crypto_key *key, unsigned int slot,
+				     unsigned int data_unit_mask, int capid)
+{
+	int err_program = 0;
+	int err_clear = 0;
+	struct hwkm_cmd cmd_unwrap;
+	struct hwkm_cmd cmd_kdf;
+	struct hwkm_rsp rsp_unwrap;
+	struct hwkm_rsp rsp_kdf;
+
+	struct hwkm_key_policy policy_kdf = {
+		.security_lvl = MANAGED_KEY,
+		.hw_destination = ICEMEM_SLAVE,
+		.key_type = GENERIC_KEY,
+		.enc_allowed = true,
+		.dec_allowed = true,
+		.alg_allowed = AES256_XTS,
+		.km_by_nsec_allowed = true,
+	};
+	struct hwkm_bsve bsve_kdf = {
+		.enabled = true,
+		.km_swc_en = true,
+		.km_child_key_policy_en = true,
+	};
+	union crypto_cfg cfg;
+
+	err_program = qti_hwkm_clocks(true);
+	if (err_program) {
+		pr_err("%s: Error enabling clocks %d\n", __func__,
+							err_program);
+		return err_program;
+	}
+
+	/* Failsafe, clear GP_KEYSLOT incase it is not empty for any reason */
+	err_clear = qcom_hwkm_evict_slot(GP_KEYSLOT, false);
+	if (err_clear && (err_clear != SLOT_EMPTY_ERROR)) {
+		pr_err("%s: Error clearing ICE slot %d, err %d\n",
+			__func__, GP_KEYSLOT, err_clear);
+		qti_hwkm_clocks(false);
+		return -EINVAL;
+	}
+
+	/* Unwrap keyblob into a non ICE slot using TP key */
+	cmd_unwrap.op = KEY_UNWRAP_IMPORT;
+	cmd_unwrap.unwrap.dks = GP_KEYSLOT;
+	cmd_unwrap.unwrap.kwk = TPKEY_SLOT_ICEMEM_SLAVE;
+	if ((key->size) == KEY_WRAPPED_SIZE) {
+		cmd_unwrap.unwrap.sz = key->size;
+		memcpy(cmd_unwrap.unwrap.wkb, key->raw,
+				cmd_unwrap.unwrap.sz);
+	} else {
+		cmd_unwrap.unwrap.sz = (key->size) - RAW_SECRET_SIZE;
+		memcpy(cmd_unwrap.unwrap.wkb, (key->raw) + RAW_SECRET_SIZE,
+				cmd_unwrap.unwrap.sz);
+	}
+
+	err_program = qti_hwkm_handle_cmd(&cmd_unwrap, &rsp_unwrap);
+	if (err_program) {
+		pr_err("%s: Error with key unwrap %d\n", __func__,
+							err_program);
+		qti_hwkm_clocks(false);
+		return -EINVAL;
+	}
+
+	/* Failsafe, clear ICE keyslot incase it is not empty for any reason */
+	err_clear = qcom_hwkm_evict_slot(KEYMANAGER_ICE_MAP_SLOT(slot),
+						true);
+	if (err_clear && (err_clear != SLOT_EMPTY_ERROR)) {
+		pr_err("%s: Error clearing ICE slot %d, err %d\n",
+			__func__, KEYMANAGER_ICE_MAP_SLOT(slot), err_clear);
+		qti_hwkm_clocks(false);
+		return -EINVAL;
+	}
+
+	/* Derive a 512-bit key which will be the key to encrypt/decrypt data */
+	cmd_kdf.op = SYSTEM_KDF;
+	cmd_kdf.kdf.dks = KEYMANAGER_ICE_MAP_SLOT(slot);
+	cmd_kdf.kdf.kdk = GP_KEYSLOT;
+	cmd_kdf.kdf.policy = policy_kdf;
+	cmd_kdf.kdf.bsve = bsve_kdf;
+	cmd_kdf.kdf.sz = round_up(strlen(INLINECRYPT_CTX), BYTE_ORDER_VAL);
+	memset(cmd_kdf.kdf.ctx, 0, HWKM_MAX_CTX_SIZE);
+	memcpy(cmd_kdf.kdf.ctx, INLINECRYPT_CTX, strlen(INLINECRYPT_CTX));
+
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.dusize = data_unit_mask;
+	cfg.capidx = capid;
+	cfg.cfge = 0x80;
+
+	ice_writel(mmio_data->ice_base_mmio, 0x0, (ICE_LUT_KEYS_CRYPTOCFG_R_16 +
+					ICE_LUT_KEYS_CRYPTOCFG_OFFSET*slot));
+	/* Make sure CFGE is cleared */
+	wmb();
+
+	err_program = qti_hwkm_handle_cmd(&cmd_kdf, &rsp_kdf);
+	if (err_program) {
+		pr_err("%s: Error programming key %d, slot %d\n", __func__,
+						err_program, slot);
+		err_clear = qcom_hwkm_evict_slot(GP_KEYSLOT, false);
+		if (err_clear) {
+			pr_err("%s: Error clearing slot %d err %d\n",
+					__func__, GP_KEYSLOT, err_clear);
+		}
+		qti_hwkm_clocks(false);
+		return -EINVAL;
+	}
+
+	err_clear = qcom_hwkm_evict_slot(GP_KEYSLOT, false);
+	if (err_clear) {
+		pr_err("%s: Error unwrapped slot clear %d\n", __func__,
+							err_clear);
+		qti_hwkm_clocks(false);
+		return -EINVAL;
+	}
+
+	ice_writel(mmio_data->ice_base_mmio, cfg.regval[0], (ICE_LUT_KEYS_CRYPTOCFG_R_16 +
+					ICE_LUT_KEYS_CRYPTOCFG_OFFSET*slot));
+	/* Make sure CFGE is enabled before moving forward */
+	wmb();
+
+	qti_hwkm_clocks(false);
+
+	return err_program;
+}
+
+int qcom_hwkm_program_key(void __iomem *base,
+			   const struct blk_crypto_key *key, unsigned int slot,
+			   unsigned int data_unit_mask, int capid)
+{
+	int err = 0;
+	struct ice_mmio_data mmio_data;
+
+	err = qcom_hwkm_get_mmio_data(&mmio_data, base);
+	if (err)
+		return err;
+
+	if ((key->size) <= RAW_SECRET_SIZE) {
+		pr_err("%s: Incorrect key size %d\n", __func__, key->size);
+		return -EINVAL;
+	}
+
+	if (qti_hwkm_init_required(&mmio_data) || !qti_hwkm_is_ice_tpkey_set(&mmio_data)) {
+		err = qti_hwkm_init(&mmio_data);
+		if (err) {
+			pr_err("%s: Error with HWKM init %d\n", __func__, err);
+			return -EINVAL;
+		}
+		qti_hwkm_init_done = true;
+	}
+
+	return qcom_hwkm_program_key_v1(&mmio_data, key, slot, data_unit_mask, capid);
+}
+EXPORT_SYMBOL_GPL(qcom_hwkm_program_key);
+
+int qcom_hwkm_invalidate_key(unsigned int slot)
+{
+	int err = 0;
+
+	if (!qti_hwkm_init_done)
+		return 0;
+
+	err = qti_hwkm_clocks(true);
+	if (err) {
+		pr_err("%s: Error enabling clocks %d\n", __func__, err);
+		return err;
+	}
+	/* Clear key from ICE keyslot */
+	err = qcom_hwkm_evict_slot(KEYMANAGER_ICE_MAP_SLOT(slot), true);
+	if (err && (err != SLOT_EMPTY_ERROR)) {
+		pr_err("%s: Error clearing slot %d, err %d\n",
+			__func__, slot, err);
+		qti_hwkm_clocks(false);
+		return -EINVAL;
+	}
+	qti_hwkm_clocks(false);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(qcom_hwkm_invalidate_key);
+
+int qcom_hwkm_derive_raw_secret_platform(
+				const u8 *wrapped_key,
+				unsigned int wrapped_key_size, u8 *secret,
+				unsigned int secret_size)
+{
+	int err_program = 0;
+	int err_clear = 0;
+	struct hwkm_cmd cmd_unwrap;
+	struct hwkm_cmd cmd_kdf;
+	struct hwkm_cmd cmd_read;
+	struct hwkm_rsp rsp_unwrap;
+	struct hwkm_rsp rsp_kdf;
+	struct hwkm_rsp rsp_read;
+
+	struct hwkm_key_policy policy_kdf = {
+		.security_lvl = SW_KEY,
+		.hw_destination = ICEMEM_SLAVE,
+		.key_type = GENERIC_KEY,
+		.enc_allowed = true,
+		.dec_allowed = true,
+		.alg_allowed = AES256_CBC,
+		.km_by_nsec_allowed = true,
+	};
+	struct hwkm_bsve bsve_kdf = {
+		.enabled = true,
+		.km_swc_en = true,
+		.km_child_key_policy_en = true,
+	};
+
+	if (wrapped_key_size <= RAW_SECRET_SIZE) {
+		pr_err("%s: Invalid wrapped_key_size: %u\n",
+				__func__, wrapped_key_size);
+		return -EINVAL;
+	}
+
+	if (wrapped_key_size != KEY_WRAPPED_SIZE) {
+		memcpy(secret, wrapped_key, secret_size);
+		return 0;
+	}
+
+	err_program = qti_hwkm_clocks(true);
+	if (err_program) {
+		pr_err("%s: Error enabling clocks %d\n", __func__,
+							err_program);
+		return err_program;
+	}
+
+	/* Failsafe, clear GP_KEYSLOT incase it is not empty for any reason */
+	err_clear = qcom_hwkm_evict_slot(GP_KEYSLOT, false);
+	if (err_clear && (err_clear != SLOT_EMPTY_ERROR)) {
+		pr_err("%s: Error clearing GP slot %d, err %d\n",
+			__func__, GP_KEYSLOT, err_clear);
+		qti_hwkm_clocks(false);
+		return -EINVAL;
+	}
+
+	/* Unwrap keyblob into a non ICE slot using TP key */
+	cmd_unwrap.op = KEY_UNWRAP_IMPORT;
+	cmd_unwrap.unwrap.dks = GP_KEYSLOT;
+	cmd_unwrap.unwrap.kwk = TPKEY_SLOT_ICEMEM_SLAVE;
+	cmd_unwrap.unwrap.sz = wrapped_key_size;
+	memcpy(cmd_unwrap.unwrap.wkb, wrapped_key,
+			cmd_unwrap.unwrap.sz);
+
+	err_program = qti_hwkm_handle_cmd(&cmd_unwrap, &rsp_unwrap);
+	if (err_program) {
+		pr_err("%s: Error with key unwrap %d\n", __func__,
+							err_program);
+		qti_hwkm_clocks(false);
+		return -EINVAL;
+	}
+
+	/* Failsafe, clear RAW_SECRET_KEYSLOT incase it is not empty */
+	err_clear = qcom_hwkm_evict_slot(RAW_SECRET_KEYSLOT, false);
+	if (err_clear && (err_clear != SLOT_EMPTY_ERROR)) {
+		pr_err("%s: Error clearing raw secret slot %d, err %d\n",
+			__func__, RAW_SECRET_KEYSLOT, err_clear);
+		qti_hwkm_clocks(false);
+		return -EINVAL;
+	}
+
+	/* Derive a 512-bit key which will be the key to encrypt/decrypt data */
+	cmd_kdf.op = SYSTEM_KDF;
+	cmd_kdf.kdf.dks = RAW_SECRET_KEYSLOT;
+	cmd_kdf.kdf.kdk = GP_KEYSLOT;
+	cmd_kdf.kdf.policy = policy_kdf;
+	cmd_kdf.kdf.bsve = bsve_kdf;
+	cmd_kdf.kdf.sz = round_up(strlen(RAW_SECRET_CTX), BYTE_ORDER_VAL);
+	memset(cmd_kdf.kdf.ctx, 0, HWKM_MAX_CTX_SIZE);
+	memcpy(cmd_kdf.kdf.ctx, RAW_SECRET_CTX, strlen(RAW_SECRET_CTX));
+
+	err_program = qti_hwkm_handle_cmd(&cmd_kdf, &rsp_kdf);
+	if (err_program) {
+		pr_err("%s: Error deriving secret %d, slot %d\n", __func__,
+					err_program, RAW_SECRET_KEYSLOT);
+		err_program = -EINVAL;
+	}
+
+	/* Read the KDF key for raw secret */
+	cmd_read.op = KEY_SLOT_RDWR;
+	cmd_read.rdwr.slot = RAW_SECRET_KEYSLOT;
+	cmd_read.rdwr.is_write = false;
+	err_program = qti_hwkm_handle_cmd(&cmd_read, &rsp_read);
+	if (err_program) {
+		pr_err("%s: Error with key read %d\n", __func__, err_program);
+		err_program = -EINVAL;
+	}
+	memcpy(secret, rsp_read.rdwr.key, rsp_read.rdwr.sz);
+
+	err_clear = qcom_hwkm_evict_slot(GP_KEYSLOT, false);
+	if (err_clear)
+		pr_err("%s: GP slot clear %d\n", __func__, err_clear);
+	err_clear = qcom_hwkm_evict_slot(RAW_SECRET_KEYSLOT, false);
+	if (err_clear)
+		pr_err("%s: raw secret slot clear %d\n", __func__, err_clear);
+
+	qti_hwkm_clocks(false);
+
+	return err_program;
+}
+EXPORT_SYMBOL_GPL(qcom_hwkm_derive_raw_secret_platform);
 
 static int qti_hwkm_probe(struct platform_device *pdev)
 {

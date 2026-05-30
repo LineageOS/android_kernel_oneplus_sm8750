@@ -56,6 +56,7 @@ def define_sun():
         "drivers/firmware/qcom-scm.ko",
         "drivers/firmware/qcom/si_core/mem_object.ko",
         "drivers/firmware/qcom/si_core/si_core_module.ko",
+        "drivers/gpio/gpio-pca953x.ko",
         "drivers/gpu/drm/bridge/lt9611uxc.ko",
         "drivers/gpu/drm/display/drm_display_helper.ko",
         "drivers/gpu/drm/display/drm_dp_aux_bus.ko",
