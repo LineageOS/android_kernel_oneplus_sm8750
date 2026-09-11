@@ -339088,6 +339088,12 @@ function {
   parameter_id: 0xf435685e
 }
 function {
+  id: 0x982e650f
+  return_type_id: 0x6720d32f
+  parameter_id: 0x12e24ee1
+  parameter_id: 0x4585663f
+}
+function {
   id: 0x982f20ff
   return_type_id: 0x6720d32f
   parameter_id: 0x12e75923
@@ -428361,6 +428367,15 @@ elf_symbol {
   full_name: "sbitmap_queue_clear"
 }
 elf_symbol {
+  id: 0x9b795cee
+  name: "sbitmap_queue_get_shallow"
+  is_defined: true
+  symbol_type: FUNCTION
+  crc: 0xd792d9d9
+  type_id: 0x982e650f
+  full_name: "sbitmap_queue_get_shallow"
+}
+elf_symbol {
   id: 0xe160a711
   name: "sbitmap_queue_init_node"
   is_defined: true
@@ -455240,6 +455255,7 @@ interface {
   symbol_id: 0xe4f77cb7
   symbol_id: 0x12f98f54
   symbol_id: 0x85d0ffae
+  symbol_id: 0x9b795cee
   symbol_id: 0xe160a711
   symbol_id: 0x4513114c
   symbol_id: 0x3af97828
