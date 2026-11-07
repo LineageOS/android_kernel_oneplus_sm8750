@@ -1,0 +1,21 @@
+{
+  "comments": [
+    {
+      "unresolved": true,
+      "key": {
+        "uuid": "27632ab4_1d7b7c02",
+        "filename": "/PATCHSET_LEVEL",
+        "patchSetId": 1
+      },
+      "lineNbr": 0,
+      "author": {
+        "id": 38558
+      },
+      "writtenOn": "2026-11-07T01:39:01Z",
+      "side": 1,
+      "message": "This patch backports the upstream fix for CVE-2026-98260(a high-severity UAF in POSIX CPU timers).",
+      "revId": "750b7f235c07a8046172b76fa5a319790bc0a461",
+      "serverId": "1ec6b3db-b2c1-4fa4-84a2-4c7efe89ba71"
+    }
+  ]
+}
